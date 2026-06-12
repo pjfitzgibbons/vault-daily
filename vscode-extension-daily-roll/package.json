@@ -5,6 +5,11 @@
   "version": "0.1.3",
   "publisher": "pfitzgibbons",
   "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pfitzgibbons/vault.git",
+    "directory": "vscode-extension-daily-roll"
+  },
   "engines": {
     "vscode": "^1.74.0"
   },
@@ -20,6 +25,23 @@
         "command": "vaultDaily.rollForward",
         "title": "Vault Daily: Roll Forward",
         "icon": "$(arrow-right)"
+      },
+      {
+        "command": "vaultDaily.setTaskStatus",
+        "title": "Vault Daily: Set Task Status"
+      },
+      {
+        "command": "vaultDaily.submitStandup",
+        "title": "Vault Daily: Submit to Jira",
+        "icon": "$(cloud-upload)"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "vaultDaily.setTaskStatus",
+        "key": "ctrl+shift+s",
+        "mac": "cmd+shift+s",
+        "when": "editorTextFocus && resourceFilename =~ /^\\d{4}-\\d{2}-\\d{2}\\.md$/"
       }
     ],
     "codeLens": [
@@ -33,6 +55,11 @@
           "command": "vaultDaily.rollForward",
           "when": "resourceExtname == .md && resourceFilename =~ /^\\d{4}-\\d{2}-\\d{2}\\.md$/",
           "group": "navigation@1"
+        },
+        {
+          "command": "vaultDaily.submitStandup",
+          "when": "resourceExtname == .md && resourceFilename =~ /^\\d{4}-\\d{2}-\\d{2}\\.md$/",
+          "group": "navigation@2"
         }
       ],
       "editor/context": [
