@@ -1,5 +1,41 @@
 # PKM Setup — Session Context
 
+---
+
+## Next: Task Status Widget (vault-daily-roll extension)
+
+We want a per-task status selector in `## Tasks` sections of `vault/daily/*.md` files.
+Statuses: **WIP** (default), **Needs-Review**, **Reviewing**, **Needs-QA**, **QA**, **Done**
+
+The status prefix written back into the line is already read by `transformForStandup()` in the extension, so whatever option we implement will flow cleanly into roll-forward Standup output.
+
+### Option A — CodeLens badge + QuickPick ✅ Recommended
+Each task line gets a CodeLens above it showing current status (e.g. `● WIP`).  
+Clicking opens a floating QuickPick with the six options.  
+On selection the status prefix is rewritten into the task line in-place.  
+- **Pros:** Idiomatic VS Code, no extra framework, already compatible with transform pipeline, one extra click.  
+- **Cons:** Badge sits *above* the line, not inline.
+
+### Option B — Hover provider with action buttons
+Hovering a task line shows a tooltip with markdown buttons (`[WIP] [Needs-Review] [Done]`).  
+Clicking a button triggers a command that updates the line.  
+- **Pros:** Feels more inline.  
+- **Cons:** Hover is transient, disappears on mouse move — unreliable for intentional edits.
+
+### Option C — Command / keybinding (`Vault: Set Task Status`)
+No widget — dedicated command opens a QuickPick on the current cursor line.  
+Same QuickPick as A but keyboard-triggered, no visual affordance.  
+- **Pros:** Fastest for keyboard-driven workflow.  
+- **Cons:** No per-line status visible at a glance.
+
+### Option D — WebView sidebar panel
+Full custom HTML/CSS/JS panel listing all tasks with real `<select>` dropdowns.  
+Two-way sync with the document.  
+- **Pros:** True dropdown UX.  
+- **Cons:** Significantly more code, harder to keep in sync with live edits, overkill.
+
+---
+
 Use this file to resume setup work in a new Claude Code session.
 
 ---
