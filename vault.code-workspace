@@ -1,0 +1,56 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../Downloads/standup-cli"
+		}
+	],
+	"settings": {
+		"foam.openDailyNote.onStartup": false,
+		"foam.files.ignore": [
+			"**/.vscode/**",
+			"**/.foam/**"
+		],
+		"foam.openDailyNote.directory": "daily",
+		"foam.openDailyNote.filenameFormat": "YYYY-MM-DD",
+		"foam.openDailyNote.fileExtension": "md",
+		"foam.openDailyNote.titleFormat": "YYYY-MM-DD",
+		"foam.edit.linkReferenceDefinitions": "withExtensions",
+		"todo-tree.general.tags": [
+			"[ ]",
+			"[x]"
+		],
+		"todo-tree.general.tagGroups": {
+			"TODO": [
+				"[ ]"
+			],
+			"DONE": [
+				"[x]"
+			]
+		},
+		"todo-tree.filtering.includeGlobs": [
+			"**/*.md"
+		],
+		"todo-tree.filtering.excludeGlobs": [
+			"**/.vscode/**",
+			"**/.foam/**"
+		],
+		"todo-tree.tree.showBadges": true,
+		"todo-tree.tree.groupedByTag": true,
+		"markdown.extension.toc.levels": "2..4",
+		"markdown.extension.list.toggle.candidate-markers": [
+			" ",
+			"x"
+		],
+		"files.defaultLanguage": "markdown",
+		"explorer.compactFolders": false,
+		"chat.tools.terminal.autoApprove": {
+			"/^cd /Users/pfitzgibbons/vault/vscode-extension-daily-roll && npx @vscode/vsce package --no-dependencies --allow-missing-repository -o vault-daily-roll-0\\.1\\.0\\.vsix && code --install-extension vault-daily-roll-0\\.1\\.0\\.vsix --force$/": {
+				"approve": true,
+				"matchCommandLine": true
+			}
+		}
+	}
+}

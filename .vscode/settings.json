@@ -1,0 +1,45 @@
+{
+  // Foam core
+  "foam.openDailyNote.onStartup": false,
+  "foam.files.ignore": [
+    "**/.vscode/**",
+    "**/.foam/**"
+  ],
+
+  // Daily note format and location
+  "foam.openDailyNote.directory": "daily",
+  "foam.openDailyNote.filenameFormat": "YYYY-MM-DD",
+  "foam.openDailyNote.fileExtension": "md",
+  "foam.openDailyNote.titleFormat": "YYYY-MM-DD",
+
+  // Wiki-link style: [[note-name]] without .md extension
+  "foam.edit.linkReferenceDefinitions": "withExtensions",
+
+  // Memo: same link pattern, scoped to vault
+  "memo.openDailyNote.directory": "daily",
+  "memo.links.format": "wikilink",
+
+  // Todo Tree: scan all markdown for tasks
+  "todo-tree.general.tags": ["[ ]", "[x]"],
+  "todo-tree.general.tagGroups": {
+    "TODO": ["[ ]"],
+    "DONE": ["[x]"]
+  },
+  "todo-tree.regex.regex": "(//|#|<!--|;|/\\*|^|\\s)\\s*($TAGS)",
+  "todo-tree.filtering.includeGlobs": ["**/*.md"],
+  "todo-tree.filtering.excludeGlobs": ["**/.vscode/**", "**/.foam/**"],
+  "todo-tree.tree.showBadges": true,
+  "todo-tree.tree.groupedByTag": true,
+
+  // Markdown All in One
+  "markdown.extension.toc.levels": "2..4",
+  "markdown.extension.list.toggle.candidate-markers": [" ", "x"],
+
+  // Editor comfort for markdown
+  "editor.wordWrap": "on",
+  "editor.lineNumbers": "off",
+  "files.defaultLanguage": "markdown",
+
+  // Prevent VSCode from folding the file tree context
+  "explorer.compactFolders": false
+}
