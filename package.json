@@ -1,0 +1,16 @@
+{
+  "name": "vault-daily",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "dev": "concurrently \"node server.js\" \"npm run dev --prefix daily-ui\"",
+    "build": "npm run build --prefix daily-ui"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
