@@ -15,7 +15,9 @@ export function useDaily() {
 
   async function loadDate(date, { force = false } = {}) {
     if (dirty.value && !force) {
-      if (!confirm('Unsaved changes — navigate away?')) return
+      if (!confirm('Unsaved changes — navigate away?')) {
+        return { ok: false, cancelled: true, date }
+      }
     }
     currentDate.value = date
     rawContent.value  = ''
@@ -28,8 +30,10 @@ export function useDaily() {
       rawContent.value = data.content || ''
       fileExists.value = data.exists
       status.value = `daily/${date}.md${data.exists ? '' : ' (not found)'}`
+      return { ok: true, date, exists: data.exists }
     } catch (e) {
       status.value = `Load error: ${e.message}`
+      return { ok: false, date, error: e.message }
     }
   }
 

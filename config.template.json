@@ -1,0 +1,14 @@
+{
+  "port": 8008,
+  "vaultPath": ".",
+  "jira": {
+    "baseUrl": "https://yourcompany.atlassian.net",
+    "email": "you@example.com",
+    "token": "your_jira_api_token",
+    "fields": {
+      "yesterday": "customfield_11885",
+      "today": "customfield_11886",
+      "blockers": "customfield_11887"
+    }
+  }
+}

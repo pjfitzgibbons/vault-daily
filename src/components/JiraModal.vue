@@ -1,17 +1,17 @@
 <template>
   <Teleport to="body">
-    <div v-if="open" class="backdrop" @click.self="emit('close')">
+    <div v-if="open" class="backdrop" data-action="jira-modal-backdrop" @click.self="emitClose('backdrop')">
       <div class="modal">
         <h3>Submit Standup to Jira</h3>
         <p class="info">
           Jira credentials and field IDs are configured in
-          <code>config.json</code> next to <code>server.js</code>.
+          <code>config.json</code> at the vault root.
           The server proxies requests — no credentials leave your machine.
         </p>
         <div v-if="statusMsg" class="status-msg" :class="statusClass">{{ statusMsg }}</div>
         <div class="actions">
-          <button @click="emit('close')">Cancel</button>
-          <button class="primary" :disabled="submitting" @click="emit('submit')">
+          <button data-action="jira-modal-cancel" @click="emitClose('cancel')">Cancel</button>
+          <button class="primary" :disabled="submitting" data-action="jira-modal-submit" @click="emitSubmit">
             {{ submitting ? 'Submitting…' : 'Submit' }}
           </button>
         </div>
@@ -27,7 +27,15 @@ defineProps({
   statusMsg:  { type: String,  default: '' },
   statusClass:{ type: String,  default: '' },
 })
-defineEmits(['close', 'submit'])
+const emit = defineEmits(['close', 'submit'])
+
+function emitClose(source) {
+  emit('close', source)
+}
+
+function emitSubmit() {
+  emit('submit', 'modal-submit')
+}
 </script>
 
 <style scoped>

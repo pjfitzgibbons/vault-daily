@@ -25,7 +25,7 @@ test('GET /api/jira/config returns non-secret jira config shape', async (t) => {
     LOG_LEVEL: 'error',
   }
 
-  const child = spawn('node', ['server.js'], {
+  const child = spawn('node', ['src/server.cjs'], {
     env,
     stdio: 'ignore',
   })

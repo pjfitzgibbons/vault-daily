@@ -1,15 +1,15 @@
 <template>
   <header id="toolbar">
     <div class="nav">
-      <button @click="emit('navigate', addDays(currentDate, -1))">←</button>
-      <button @click="emit('navigate', today)">Today</button>
+      <button data-action="nav-prev" @click="navigatePrev">←</button>
+      <button data-action="nav-today" @click="navigateToday">Today</button>
       <span class="date-label">{{ currentDate }}</span>
-      <button @click="emit('navigate', addDays(currentDate, 1))">→</button>
+      <button data-action="nav-next" @click="navigateNext">→</button>
     </div>
     <div class="spacer" />
-    <button @click="emit('rollForward')">↻ Roll Forward</button>
-    <button @click="emit('submitStandup')">☁ Standup</button>
-    <button class="primary" :disabled="!dirty" @click="emit('save')">Save</button>
+    <button data-action="roll-forward" @click="emit('roll-forward')">↻ Roll Forward</button>
+    <button data-action="standup-open" @click="emit('submit-standup')">☁ Standup</button>
+    <button class="primary" :disabled="!dirty" data-action="save" @click="emit('save')">Save</button>
   </header>
 </template>
 
@@ -21,13 +21,25 @@ const props = defineProps({
   currentDate: { type: String, required: true },
   dirty:       { type: Boolean, default: false },
 })
-const emit = defineEmits(['navigate', 'rollForward', 'submitStandup', 'save'])
+const emit = defineEmits(['navigate', 'roll-forward', 'submit-standup', 'save'])
 
 const today = computed(() => todayStr())
 
 function addDays(date, n) {
   if (n > 0) return addOneDay(date)
   return subOneDay(date)
+}
+
+function navigatePrev() {
+  emit('navigate', addDays(props.currentDate, -1), 'prev')
+}
+
+function navigateToday() {
+  emit('navigate', today.value, 'today')
+}
+
+function navigateNext() {
+  emit('navigate', addDays(props.currentDate, 1), 'next')
 }
 </script>
 

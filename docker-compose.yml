@@ -21,7 +21,10 @@ services:
     volumes:
       - ./log:/app/log
       - ./daily:/app/daily
+      - ./areas:/app/areas
+      - ./people:/app/people
       - ./projects:/app/projects
+      - ./resources:/app/resources
       - ./config.json:/app/config.json:ro
 
   vault-test:

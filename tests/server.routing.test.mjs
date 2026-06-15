@@ -25,7 +25,7 @@ async function waitFor(url, attempts = 40, delayMs = 100) {
 
 function startServer(t) {
   const port = 19000 + Math.floor(Math.random() * 1000)
-  const child = spawn('node', ['server.js'], {
+  const child = spawn('node', ['src/server.cjs'], {
     env: {
       ...process.env,
       PORT: String(port),

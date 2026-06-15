@@ -4,7 +4,7 @@ module.exports = {
   testDir: './tests/e2e',
   timeout: 30_000,
   webServer: {
-    command: 'node server.js',
+    command: 'node src/server.cjs',
     url: 'http://127.0.0.1:8008',
     reuseExistingServer: true,
     timeout: 120_000,

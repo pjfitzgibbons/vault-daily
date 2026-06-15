@@ -2,7 +2,13 @@
 .gitignore
 node_modules
 log
+log/
 *.log
 .vscode
 .vscode-extension*
 memories
+daily
+people
+projects
+resources
+areas

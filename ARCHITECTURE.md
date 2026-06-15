@@ -7,33 +7,32 @@ The server handles all file I/O and Jira proxying; the Vue app is a pure UI laye
 
 ```
 vault/
-├── server.js              # Node HTTP server (unchanged API contract)
 ├── config.json            # Vault path, port, Jira credentials
 ├── package.json           # adds "dev" and "build" scripts
 ├── daily/                 # markdown files (YYYY-MM-DD.md)
 ├── projects/              # wikilink targets (*.md)
-├── src/                   # Vue 3 + Vite source
-│   ├── index.html
-│   ├── vite.config.js
-│   ├── src/
-│   │   ├── main.js
-│   │   ├── App.vue
-│   │   ├── components/
-│   │   │   ├── AppToolbar.vue
-│   │   │   ├── StandupPanel.vue
-│   │   │   ├── TaskPanel.vue          # Tasks + On Deck share this
-│   │   │   ├── TaskRow.vue
-│   │   │   ├── NotesPanel.vue
-│   │   │   └── WikilinkInput.vue      # reusable [[...]] autocomplete input
-│   │   ├── composables/
-│   │   │   ├── useDaily.js            # load/save current date file
-│   │   │   ├── useProjects.js         # fetch project names for wikilink
-│   │   │   └── useSplitter.js         # panel resize + localStorage persist
-│   │   └── utils/
-│   │       ├── parser.js              # parseSections, parseStandup, parseTaskLines
-│   │       ├── mutations.js           # rewriteTaskStatus, toggleTask, addTask, deleteTask
-│   │       └── rollForward.js         # buildNextDayContent, transformForStandup
-└── dist/                  # built output (served by server.js in production)
+├── src/                   # Vue 3 + Vite source + runtime server assets
+│   ├── main.js
+│   ├── App.vue
+│   ├── server.cjs         # Node HTTP server entrypoint
+│   ├── logger.cjs         # pino logger
+│   ├── daily.html         # legacy HTML fallback served by server
+│   ├── components/
+│   │   ├── AppToolbar.vue
+│   │   ├── StandupPanel.vue
+│   │   ├── TaskPanel.vue          # Tasks + On Deck share this
+│   │   ├── TaskRow.vue
+│   │   ├── NotesPanel.vue
+│   │   └── WikilinkInput.vue      # reusable [[...]] autocomplete input
+│   ├── composables/
+│   │   ├── useDaily.js            # load/save current date file
+│   │   ├── useProjects.js         # fetch project names for wikilink
+│   │   └── useSplitter.js         # panel resize + localStorage persist
+│   └── utils/
+│       ├── parser.js              # parseSections, parseStandup, parseTaskLines
+│       ├── mutations.js           # rewriteTaskStatus, toggleTask, addTask, deleteTask
+│       └── rollForward.js         # buildNextDayContent, transformForStandup
+└── dist/                  # built output (served by src/server.cjs in production)
 ```
 
 ---
@@ -53,7 +52,7 @@ The `/api/projects` endpoint reads `projects/*.md`, strips `_template.md`, retur
 base names (no extension) sorted alphabetically. Used by `WikilinkInput`.
 
 In **dev** mode (`npm run dev`), Vite runs on `:5173` and proxies `/api/*` to
-`:8080` via `vite.config.js`. In **production** (`npm run build`), `server.js`
+:8080` via `vite.config.js`. In **production** (`npm run build`), `src/server.cjs`
 serves `dist/` statically.
 
 ---
@@ -61,7 +60,7 @@ serves `dist/` statically.
 ## Data flow
 
 ```
-server.js  ←──── fetch() ────→  useDaily.js (composable)
+src/server.cjs  ←──── fetch() ────→  useDaily.js (composable)
                                     │
                                     │ rawContent (ref<string>)
                                     ▼
@@ -230,23 +229,18 @@ suppressed (this is a task manager, not a wiki viewer).
 ## Build & dev workflow
 
 ```bash
-# Dev (Vite HMR + server API)
-npm run dev          # starts both: vite (5173) + node server.js (8080)
-
-# Production
-npm run build        # vite build → dist/
-node server.js       # serves dist/ on :8080
+# Docker-first workflow
+docker compose build vault-daily
+docker compose up vault-daily
 ```
 
-`package.json` scripts use `concurrently` to run both processes in dev.
+Local scripts still exist, but Docker Compose is the primary run path.
 
 ---
 
 ## Migration strategy
 
-1. Scaffold `src/` alongside existing `daily.html` (no breakage)
-2. Port `utils/` first — they are pure JS, fully testable, no Vue dependency
-3. Add `/api/projects` to `server.js`
-4. Build components bottom-up: `WikilinkInput` → `TaskRow` → `TaskPanel` → panels → `App`
-5. When feature-complete, update `server.js` to serve `dist/` as the default route
-6. Archive `daily.html` (keep for reference)
+1. Runtime files moved under `src/` (`server.cjs`, `logger.cjs`, `daily.html`)
+2. Docker runtime now copies `src/` runtime assets explicitly
+3. `src/server.cjs` serves `dist/` by default with legacy `src/daily.html` fallback
+4. Root runtime files removed to avoid split ownership

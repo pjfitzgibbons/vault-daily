@@ -1,5 +1,14 @@
 # PKM Setup — Session Context
 
+## Current runtime context (2026-06-15)
+
+- Project is Docker-first: use `docker compose` for run/build/test workflows.
+- Runtime server entrypoint is `src/server.cjs` (not root `server.js`).
+- Runtime support files are co-located in `src/`:
+	- `src/logger.cjs`
+	- `src/daily.html`
+- Root runtime files (`server.js`, `logger.js`, `daily.html`) were removed to avoid duplicate sources of truth.
+
 ---
 
 ## Next: Task Status Widget (vault-daily-roll extension)
