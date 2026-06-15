@@ -1,0 +1,9 @@
+.git
+.gitignore
+node_modules
+daily-ui/node_modules
+log
+*.log
+.vscode
+.vscode-extension*
+memories

@@ -1,3 +1,14 @@
 .DS_Store
 vscode-extension-daily-roll/*.vsix
 node_modules
+log/
+.env
+.env.local
+dist/index.html
+dist/assets/index-BaERgizF.css
+dist/assets/index-CEaQr6yr.js
+dist/assets/index-DV4bxPy_.css
+dist/assets/index-DyPfKi0F.js
+dist/index.html
+dist/assets/index-BaERgizF.css
+dist/assets/index-DyPfKi0F.js

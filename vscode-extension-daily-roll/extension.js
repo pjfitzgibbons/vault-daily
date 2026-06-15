@@ -478,7 +478,7 @@ function renderTaskChecklist(items) {
 
 function buildNextDayContent(nextDate, completed, worked, remaining, onDeckWorked, onDeckRemaining) {
   const yesterdayItems = [...completed, ...worked];
-  const todayItems = [...worked, ...remaining];
+  const todayItems = [...worked, ...onDeckWorked, ...remaining];
   const carryOver = [...worked, ...remaining, ...onDeckWorked];
   const parts = [
     '---',

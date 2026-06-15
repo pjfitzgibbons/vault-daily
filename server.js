@@ -5,6 +5,7 @@ const https = require('node:https');
 const fs    = require('node:fs');
 const path  = require('node:path');
 const url   = require('node:url');
+const logger = require('./logger');
 
 // ── Config ─────────────────────────────────────────────────────────────────────
 const CONFIG_PATH = path.join(__dirname, 'config.json');
@@ -12,16 +13,35 @@ let config = {};
 try {
   config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
 } catch {
-  console.warn('No config.json found — using defaults (copy config.json.example → config.json).');
+  logger.warn('No config.json found; using defaults and environment variables.');
 }
 
+config.jira = config.jira || {};
+config.jira.fields = config.jira.fields || {};
+if (process.env.JIRA_BASE_URL) config.jira.baseUrl = process.env.JIRA_BASE_URL;
+if (process.env.JIRA_EMAIL) config.jira.email = process.env.JIRA_EMAIL;
+if (process.env.JIRA_TOKEN) config.jira.token = process.env.JIRA_TOKEN;
+if (process.env.JIRA_FIELDS_YESTERDAY) config.jira.fields.yesterday = process.env.JIRA_FIELDS_YESTERDAY;
+if (process.env.JIRA_FIELDS_TODAY) config.jira.fields.today = process.env.JIRA_FIELDS_TODAY;
+if (process.env.JIRA_FIELDS_BLOCKERS) config.jira.fields.blockers = process.env.JIRA_FIELDS_BLOCKERS;
+
 const PORT        = Number(process.env.PORT)       || config.port      || 8080;
+const HOST        = process.env.HOST               || config.host      || '127.0.0.1';
+const ALLOW_REMOTE = process.env.ALLOW_REMOTE === '1' || config.allowRemote === true;
 const VAULT_PATH  = process.env.VAULT_PATH          || path.resolve(__dirname, config.vaultPath || '.');
 const DAILY_DIR   = path.join(VAULT_PATH, 'daily');
 const PROJECTS_DIR = path.join(VAULT_PATH, 'projects');
 const DIST_DIR    = path.join(__dirname, 'dist');
 const HTML_FILE   = path.join(__dirname, 'daily.html');
 const DATE_RE     = /^\d{4}-\d{2}-\d{2}$/;
+
+function todayStr() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 function jsonResp(res, status, data) {
@@ -49,12 +69,19 @@ function readBody(req) {
 function jiraReq(urlPath, method, bodyObj) {
   const j = config.jira || {};
   const base = (j.baseUrl || '').replace(/\/$/, '');
-  if (!base || !j.email || !j.token)
+  if (!base || !j.email || !j.token) {
+    logger.error({
+      jiraBaseConfigured: !!base,
+      jiraEmailConfigured: !!j.email,
+      jiraTokenConfigured: !!j.token,
+    }, 'Jira request aborted due to missing credentials/config');
     return Promise.reject(new Error('Jira not configured — set jira.baseUrl/email/token in config.json'));
+  }
 
   const auth   = Buffer.from(`${j.email}:${j.token}`).toString('base64');
   const body   = bodyObj ? JSON.stringify(bodyObj) : undefined;
   const target = new URL(`${base}${urlPath}`);
+  logger.debug({ method: method || 'GET', path: target.pathname }, 'Jira request start');
 
   return new Promise((resolve, reject) => {
     const req = https.request({
@@ -72,6 +99,7 @@ function jiraReq(urlPath, method, bodyObj) {
       let d = '';
       r.on('data', c => { d += c; });
       r.on('end', () => {
+        logger.debug({ method: method || 'GET', path: target.pathname, statusCode: r.statusCode }, 'Jira response received');
         if (r.statusCode === 401 || r.statusCode === 403)
           return reject(new Error(`Jira auth failed (${r.statusCode}) — check config.json credentials`));
         if (r.statusCode >= 400)
@@ -90,7 +118,7 @@ function jiraReq(urlPath, method, bodyObj) {
 async function handle(req, res) {
   // Security: only accept loopback connections
   const remoteAddr = req.socket.remoteAddress;
-  if (remoteAddr !== '127.0.0.1' && remoteAddr !== '::1' && remoteAddr !== '::ffff:127.0.0.1') {
+  if (!ALLOW_REMOTE && remoteAddr !== '127.0.0.1' && remoteAddr !== '::1' && remoteAddr !== '::ffff:127.0.0.1') {
     res.writeHead(403); return res.end('Forbidden');
   }
 
@@ -109,6 +137,14 @@ async function handle(req, res) {
 
   // ── Serve static (Vue dist) or fallback to legacy daily.html ───────────────
   if (!pathname.startsWith('/api/')) {
+    if (pathname === '/') {
+      res.writeHead(302, {
+        Location: `/${todayStr()}`,
+        'Cache-Control': 'no-store',
+      });
+      return res.end();
+    }
+
     // Try dist/ first (Vue build output)
     const distIndex = path.join(DIST_DIR, 'index.html');
     const distFile  = path.join(DIST_DIR, pathname === '/' ? 'index.html' : pathname.slice(1));
@@ -195,10 +231,24 @@ async function handle(req, res) {
   }
 
   // ── POST /api/jira/standup ───────────────────────────────────────────────────
+  if (pathname === '/api/jira/config' && method === 'GET') {
+    const jira = config.jira || {};
+    return jsonResp(res, 200, {
+      baseUrl: jira.baseUrl || '',
+      fields: jira.fields || {},
+    });
+  }
+
+  // ── POST /api/jira/standup ───────────────────────────────────────────────────
   if (pathname === '/api/jira/standup' && method === 'POST') {
     try {
       const { date, yesterday, today, blockers } = await readBody(req);
       const fields = (config.jira || {}).fields || {};
+      logger.info({ date, yesterdayCount: (yesterday || []).length, todayCount: (today || []).length }, 'Standup submit started');
+      if (!fields.yesterday && !fields.today && !fields.blockers) {
+        logger.error('Standup submit aborted because Jira custom fields are not configured');
+        return jsonResp(res, 500, { error: 'Jira custom fields not configured' });
+      }
 
       const me = await jiraReq('/rest/api/3/myself', 'GET');
       const data = await jiraReq('/rest/api/3/search/jql', 'POST', {
@@ -208,7 +258,10 @@ async function handle(req, res) {
       });
 
       const issue = (data.issues || []).find(i => (i.fields.summary || '').includes(date));
-      if (!issue) return jsonResp(res, 404, { error: `No standup card found for ${date}` });
+      if (!issue) {
+        logger.warn({ date, issueCount: (data.issues || []).length }, 'No standup issue found for date');
+        return jsonResp(res, 404, { error: `No standup card found for ${date}` });
+      }
 
       const adfBullet = items => ({
         type: 'doc', version: 1,
@@ -241,8 +294,10 @@ async function handle(req, res) {
           { transition: { id: done.id } });
       }
 
+      logger.info({ date, key: issue.key, transitioned: !!done }, 'Standup submit completed');
       return jsonResp(res, 200, { ok: true, key: issue.key, transitioned: !!done });
     } catch (e) {
+      logger.error({ err: e.message }, 'Standup submit failed');
       return jsonResp(res, 500, { error: e.message });
     }
   }
@@ -253,13 +308,14 @@ async function handle(req, res) {
 // ── Start ──────────────────────────────────────────────────────────────────────
 const server = http.createServer((req, res) => {
   handle(req, res).catch(e => {
-    console.error(e);
+    logger.error({ err: e.message, stack: e.stack }, 'Unhandled request error');
     try { res.writeHead(500); res.end('Internal error'); } catch {}
   });
 });
 
-server.listen(PORT, '127.0.0.1', () => {
-  console.log(`Vault Daily  →  http://localhost:${PORT}`);
-  console.log(`Vault path   →  ${VAULT_PATH}`);
-  console.log(`Daily files  →  ${DAILY_DIR}`);
+server.listen(PORT, HOST, () => {
+  logger.info(`Vault Daily  ->  http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
+  logger.info(`Vault path   ->  ${VAULT_PATH}`);
+  logger.info(`Daily files  ->  ${DAILY_DIR}`);
+  logger.info(`Log file     ->  ${path.join(__dirname, 'log', 'server.log')}`);
 });

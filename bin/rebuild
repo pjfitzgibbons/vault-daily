@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT_DIR"
+
+DC_BIN="${DC_BIN:-docker compose}"
+
+echo "[1/4] Stopping docker-compose services..."
+$DC_BIN stop
+
+echo "[2/4] Building docker-compose images..."
+$DC_BIN build
+
+echo "[3/4] Running test suite inside docker image..."
+$DC_BIN run --rm --no-deps vault-daily npm test
+
+echo "[4/4] Starting docker-compose services in detached mode..."
+$DC_BIN up -d
+
+echo "Rebuild complete."
+$DC_BIN ps

@@ -43,7 +43,7 @@ export function transformForStandup(text, addContinuing) {
  */
 export function buildNextDayContent(nextDate, completed, worked, remaining, onDeckWorked, onDeckRemaining) {
   const yesterdayItems = [...completed, ...worked]
-  const todayItems     = [...worked, ...remaining]
+  const todayItems     = [...worked, ...(onDeckWorked || []), ...remaining]
   const yesterday = yesterdayItems.length
     ? yesterdayItems.map(t => `- ${transformForStandup(t, false)}`).join('\n')
     : ''

@@ -1,0 +1,24 @@
+services:
+  vault-daily:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8008:8008"
+    environment:
+      PORT: "8008"
+      HOST: "0.0.0.0"
+      ALLOW_REMOTE: "1"
+      LOG_LEVEL: "debug"
+      VAULT_PATH: "/app"
+      JIRA_BASE_URL: "${JIRA_BASE_URL:-}"
+      JIRA_EMAIL: "${JIRA_EMAIL:-}"
+      JIRA_TOKEN: "${JIRA_TOKEN:-}"
+      JIRA_FIELDS_YESTERDAY: "${JIRA_FIELDS_YESTERDAY:-}"
+      JIRA_FIELDS_TODAY: "${JIRA_FIELDS_TODAY:-}"
+      JIRA_FIELDS_BLOCKERS: "${JIRA_FIELDS_BLOCKERS:-}"
+    volumes:
+      - ./log:/app/log
+      - ./daily:/app/daily
+      - ./projects:/app/projects
+      - ./config.json:/app/config.json:ro
