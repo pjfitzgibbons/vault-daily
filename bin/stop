@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT_DIR"
+
+PORTS=("${VAULT_PORT:-8008}" "${VAULT_ALT_PORT:-8080}")
+
+stopped_any=0
+
+for port in "${PORTS[@]}"; do
+  mapfile -t pids < <(lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null || true)
+
+  if [[ ${#pids[@]} -eq 0 ]]; then
+    echo "No listener found on :$port"
+    continue
+  fi
+
+  echo "Stopping listener(s) on :$port -> ${pids[*]}"
+  kill "${pids[@]}" 2>/dev/null || true
+  stopped_any=1
+
+  for _ in {1..10}; do
+    still=0
+    for pid in "${pids[@]}"; do
+      if kill -0 "$pid" 2>/dev/null; then
+        still=1
+        break
+      fi
+    done
+    [[ $still -eq 0 ]] && break
+    sleep 0.3
+  done
+
+  remaining=()
+  for pid in "${pids[@]}"; do
+    if kill -0 "$pid" 2>/dev/null; then
+      remaining+=("$pid")
+    fi
+  done
+
+  if [[ ${#remaining[@]} -gt 0 ]]; then
+    echo "Force stopping stubborn process(es): ${remaining[*]}"
+    kill -9 "${remaining[@]}" 2>/dev/null || true
+  fi
+
+done
+
+if [[ $stopped_any -eq 0 ]]; then
+  echo "Server is not running."
+else
+  echo "Stop complete."
+fi

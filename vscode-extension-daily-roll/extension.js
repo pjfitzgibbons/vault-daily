@@ -340,6 +340,7 @@ function extractSection(docText, heading) {
 function parseTasks(tasksSection) {
   const lines = String(tasksSection || '').split(/\r?\n/);
   const completed = [];
+  const worked = [];
   const remaining = [];
 
   for (const line of lines) {
@@ -352,12 +353,17 @@ function parseTasks(tasksSection) {
 
     const todo = /^\s*-\s*\[(?:\s)?\]\s*(.+?)\s*$/.exec(line);
     if (todo) {
-      const text = normalizeTaskText(todo[1]);
-      if (text) remaining.push(text);
+      let text = normalizeTaskText(todo[1]);
+      if (text.startsWith('> ')) {
+        text = text.slice(2); // strip worked-today flag
+        if (text) worked.push(text);
+      } else if (text) {
+        remaining.push(text);
+      }
     }
   }
 
-  return { completed, remaining };
+  return { completed, worked, remaining };
 }
 
 function parseTasksWithFallback(fullText) {
@@ -365,7 +371,7 @@ function parseTasksWithFallback(fullText) {
   const fromSection = parseTasks(tasksSection);
 
   // If Tasks heading parsing misses for any reason, fall back to scanning the full doc.
-  if (fromSection.completed.length || fromSection.remaining.length) {
+  if (fromSection.completed.length || fromSection.worked.length || fromSection.remaining.length) {
     return fromSection;
   }
 
@@ -391,9 +397,16 @@ function getTaskLineStatus(lineText) {
   if (/^\s*-\s*\[x\]\s*/i.test(lineText)) return 'done';
   const bodyMatch = /^\s*-\s*\[\s\]\s*(.+)$/.exec(lineText);
   if (!bodyMatch) return 'wip';
-  const prefixMatch = STATUS_PREFIX_RE.exec(bodyMatch[1]);
+  let body = bodyMatch[1];
+  if (body.startsWith('> ')) body = body.slice(2); // strip worked-today flag
+  const prefixMatch = STATUS_PREFIX_RE.exec(body);
   if (prefixMatch && STATUS_SLUGS.has(prefixMatch[1])) return prefixMatch[1];
   return 'wip';
+}
+
+function isWorkedToday(lineText) {
+  const bodyMatch = /^\s*-\s*\[\s\]\s*(.+)$/.exec(lineText);
+  return !!bodyMatch && bodyMatch[1].startsWith('> ');
 }
 
 function rewriteTaskStatus(lineText, newSlug) {
@@ -403,14 +416,18 @@ function rewriteTaskStatus(lineText, newSlug) {
   if (!bodyMatch) return lineText;
 
   let body = bodyMatch[1];
+  // Preserve worked-today flag
+  const workedFlag = body.startsWith('> ') ? '> ' : '';
+  if (workedFlag) body = body.slice(2);
+
   const prefixMatch = STATUS_PREFIX_RE.exec(body);
   if (prefixMatch && STATUS_SLUGS.has(prefixMatch[1])) {
     body = body.slice(prefixMatch[0].length);
   }
 
-  if (newSlug === 'done') return `${indent}- [x] ${body}`;
-  if (newSlug === 'wip')  return `${indent}- [ ] ${body}`;
-  return `${indent}- [ ] ${newSlug} ${body}`;
+  if (newSlug === 'done') return `${indent}- [x] ${body}`; // drop flag on done
+  if (newSlug === 'wip')  return `${indent}- [ ] ${workedFlag}${body}`;
+  return `${indent}- [ ] ${workedFlag}${newSlug} ${body}`;
 }
 
 function transformForStandup(rawText, addContinuing) {
@@ -459,7 +476,10 @@ function renderTaskChecklist(items) {
   return items.map(item => `- [ ] ${item}`).join('\n');
 }
 
-function buildNextDayContent(nextDate, completed, remaining, onDeck) {
+function buildNextDayContent(nextDate, completed, worked, remaining, onDeckWorked, onDeckRemaining) {
+  const yesterdayItems = [...completed, ...worked];
+  const todayItems = [...worked, ...remaining];
+  const carryOver = [...worked, ...remaining, ...onDeckWorked];
   const parts = [
     '---',
     `date: ${nextDate}`,
@@ -469,16 +489,16 @@ function buildNextDayContent(nextDate, completed, remaining, onDeck) {
     '',
     '## Standup',
     '**Yesterday:**',
-    renderBulletList(completed, '- ', false),
+    renderBulletList(yesterdayItems, '- ', false),
     '**Today:**',
-    renderBulletList(remaining, '- ', true),
+    renderBulletList(todayItems, '- ', true),
     '**Blockers:** ',
     '',
     '## Tasks',
-    renderTaskChecklist(remaining),
+    renderTaskChecklist(carryOver),
     '',
     '## On Deck',
-    onDeck || '- ',
+    renderTaskChecklist(onDeckRemaining),
     '',
     '## Notes',
     NOTES_PLACEHOLDER,
@@ -510,6 +530,15 @@ function buildStatusDecorationTypes() {
       rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed,
     });
   }
+  // Worked-today: amber ◉ shown before the task body (after checkbox)
+  types['worked'] = vscode.window.createTextEditorDecorationType({
+    before: {
+      contentText: '◉\u00a0',
+      color: '#d4a017',
+      fontStyle: 'normal',
+    },
+    rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed,
+  });
   return types;
 }
 
@@ -532,6 +561,7 @@ function applyTaskStatusDecorations(editor, decorationTypes, slugHider) {
   const lines = document.getText().split(/\r?\n/);
   const buckets = {};
   for (const s of TASK_STATUSES) buckets[s.slug] = [];
+  const workedRanges = [];
   const slugRanges = [];
 
   let inTasksSection = false;
@@ -546,17 +576,34 @@ function applyTaskStatusDecorations(editor, decorationTypes, slugHider) {
     if (!/^\s*-\s*\[[x ]\]\s*/i.test(line)) continue;
 
     const slug = getTaskLineStatus(line);
+    const worked = isWorkedToday(line);
     const checkboxMatch = /^\s*-\s*\[[x ]\]/.exec(line);
     const afterCheckbox = checkboxMatch ? checkboxMatch[0].length : line.length;
     const range = new vscode.Range(i, afterCheckbox, i, afterCheckbox);
     buckets[slug].push({ range });
 
-    // Hide from after ] through slug + trailing space so task text aligns to badge
+    // Worked-today ◉ decoration — place it at the start of the body (after checkbox)
+    if (worked) {
+      // Position at the '>' character
+      const gtPos = afterCheckbox + 1; // after the space after checkbox
+      workedRanges.push(new vscode.Range(i, gtPos, i, gtPos));
+    }
+
+    // Hide the status slug text and the '> ' flag
     if (slug !== 'wip' && slug !== 'done') {
       const bodyMatch = /^\s*-\s*\[\s\]\s*/.exec(line);
       if (bodyMatch) {
-        const slugEnd = bodyMatch[0].length + slug.length + 1; // +1 for space after slug
+        const bodyStart = bodyMatch[0].length;
+        const flagOffset = worked ? 2 : 0; // skip '> '
+        const slugEnd = bodyStart + flagOffset + slug.length + 1; // +1 for space after slug
         slugRanges.push(new vscode.Range(i, afterCheckbox + 1, i, Math.min(slugEnd, line.length)));
+      }
+    } else if (worked && slug === 'wip') {
+      // Hide just the '> ' flag for plain wip+worked lines
+      const bodyMatch = /^\s*-\s*\[\s\]\s*/.exec(line);
+      if (bodyMatch) {
+        const bodyStart = bodyMatch[0].length;
+        slugRanges.push(new vscode.Range(i, bodyStart, i, Math.min(bodyStart + 2, line.length)));
       }
     }
   }
@@ -564,6 +611,7 @@ function applyTaskStatusDecorations(editor, decorationTypes, slugHider) {
   for (const [slug, ranges] of Object.entries(buckets)) {
     editor.setDecorations(decorationTypes[slug], ranges);
   }
+  editor.setDecorations(decorationTypes['worked'], workedRanges);
   editor.setDecorations(slugHider, slugRanges);
 }
 
@@ -650,10 +698,11 @@ async function rollForwardFromActiveEditor() {
   }
 
   const fullText = document.getText();
-  const { completed, remaining } = parseTasksWithFallback(fullText);
-  const onDeck = extractSection(fullText, 'On Deck').trim() || '- ';
+  const { completed, worked, remaining } = parseTasksWithFallback(fullText);
+  const onDeckSection = extractSection(fullText, 'On Deck');
+  const { worked: onDeckWorked, remaining: onDeckRemaining } = parseTasks(onDeckSection);
 
-  const nextContent = buildNextDayContent(nextDate, completed, remaining, onDeck);
+  const nextContent = buildNextDayContent(nextDate, completed, worked, remaining, onDeckWorked, onDeckRemaining);
   fs.writeFileSync(nextPath, nextContent, 'utf8');
 
   const nextUri = vscode.Uri.file(nextPath);
@@ -662,7 +711,7 @@ async function rollForwardFromActiveEditor() {
 
   vscode.window.showInformationMessage(
     `Vault Daily Roll: Created ${path.basename(nextPath)} ` +
-      `(${completed.length} completed -> Yesterday, ${remaining.length} remaining -> Today/Tasks).`
+      `(${completed.length} completed -> Yesterday, ${worked.length} worked -> Yesterday/Today, ${remaining.length} remaining -> Today/Tasks).`
   );
 }
 

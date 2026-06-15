@@ -63,9 +63,24 @@ export function useDaily() {
 
     const secs = parseSections(rawContent.value).sections
     const { completed, worked, remaining } = parseRawTasks(secs['Tasks'] || [])
-    const onDeck = secs['On Deck'] || []
+    const onDeckWorked = []
+    const onDeckRemaining = []
+    for (const line of (secs['On Deck'] || [])) {
+      const todo = /^\s*-\s*\[ \]\s*(.+)/.exec(line)
+      if (!todo) {
+        onDeckRemaining.push(line)
+        continue
+      }
 
-    const content = buildNextDayContent(nextDate, completed, worked, remaining, onDeck)
+      const body = todo[1].trim()
+      if (body.startsWith('> ')) {
+        onDeckWorked.push(body.slice(2))
+      } else {
+        onDeckRemaining.push(line)
+      }
+    }
+
+    const content = buildNextDayContent(nextDate, completed, worked, remaining, onDeckWorked, onDeckRemaining)
     const res = await fetch(`/api/daily/${nextDate}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },

@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PORT="8008"
+URL="http://localhost:${PORT}"
+DIST_INDEX="$ROOT_DIR/dist/index.html"
+
+cd "$ROOT_DIR"
+
+is_up() {
+  curl -fsS "$URL" >/dev/null 2>&1
+}
+
+needs_build() {
+  if [[ ! -f "$DIST_INDEX" ]]; then
+    return 0
+  fi
+
+  if find "$ROOT_DIR/daily-ui/src" -type f -newer "$DIST_INDEX" -print -quit | grep -q .; then
+    return 0
+  fi
+
+  if find "$ROOT_DIR/daily-ui" -maxdepth 1 -type f \( -name "package.json" -o -name "vite.config.js" \) -newer "$DIST_INDEX" -print -quit | grep -q .; then
+    return 0
+  fi
+
+  return 1
+}
+
+if needs_build; then
+  echo "UI build is missing or stale. Building daily-ui ..."
+  npm run build --prefix daily-ui
+fi
+
+if ! is_up; then
+  echo "Starting npm localserver on ${URL} ..."
+  npm run localserver >/tmp/vault-localserver.log 2>&1 &
+
+  for _ in {1..30}; do
+    if is_up; then
+      break
+    fi
+    sleep 1
+  done
+fi
+
+if ! is_up; then
+  echo "Local server did not come up on ${URL}."
+  echo "See /tmp/vault-localserver.log for details."
+  exit 1
+fi
+
+echo "Local server is running on ${URL}"
+
+# Open VS Code's built-in Simple Browser in the current window.
+open "vscode://command/workbench.action.browser.open?%5B%22${URL}%22%5D" >/dev/null 2>&1 || true
+
+echo "If VS Code did not open Simple Browser automatically:"
+echo "1) Command Palette -> Simple Browser: Show"
+echo "2) Enter ${URL}"

@@ -38,8 +38,10 @@ export function transformForStandup(text, addContinuing) {
  * @param {string[]} completed  — checked-off tasks (body text)
  * @param {string[]} worked     — unchecked tasks flagged `>` (worked today) → Yesterday + Today
  * @param {string[]} remaining  — all other unchecked tasks → Today only
+ * @param {string[]} onDeckWorked     — unchecked On Deck tasks flagged `>` → move into Tasks
+ * @param {string[]} onDeckRemaining  — all other unchecked On Deck tasks → stay in On Deck
  */
-export function buildNextDayContent(nextDate, completed, worked, remaining, onDeck) {
+export function buildNextDayContent(nextDate, completed, worked, remaining, onDeckWorked, onDeckRemaining) {
   const yesterdayItems = [...completed, ...worked]
   const todayItems     = [...worked, ...remaining]
   const yesterday = yesterdayItems.length
@@ -48,10 +50,10 @@ export function buildNextDayContent(nextDate, completed, worked, remaining, onDe
   const today = todayItems.length
     ? todayItems.map(t => `- ${transformForStandup(t, true)}`).join('\n')
     : ''
-  // Carry forward all unchecked tasks (worked[] already has flag stripped by parseRawTasks)
-  const allCarryOver = [...worked, ...remaining]
+  // Carry forward all unchecked tasks and worked-today items from On Deck.
+  const allCarryOver = [...worked, ...remaining, ...(onDeckWorked || [])]
   const tasks   = allCarryOver.length ? allCarryOver.map(r => `- [ ] ${r}`).join('\n') : '- [ ] '
-  const onDeckStr = (onDeck || []).filter(l => l.trim()).join('\n') || '- '
+  const onDeckStr = (onDeckRemaining || []).filter(l => l.trim()).join('\n') || '- '
 
   return [
     '---', `date: ${nextDate}`, '---', '',
