@@ -10,13 +10,13 @@ echo "[1/4] Stopping docker-compose services..."
 $DC_BIN stop
 
 echo "[2/4] Building docker-compose images..."
-$DC_BIN build
+$DC_BIN --profile test build
 
-echo "[3/4] Running test suite inside docker image..."
-$DC_BIN run --rm --no-deps vault-daily npm test
+echo "[3/4] Running test suite inside dedicated test image..."
+$DC_BIN --profile test run --rm --no-deps vault-test
 
 echo "[4/4] Starting docker-compose services in detached mode..."
-$DC_BIN up -d
+$DC_BIN up -d vault-daily
 
 echo "Rebuild complete."
 $DC_BIN ps

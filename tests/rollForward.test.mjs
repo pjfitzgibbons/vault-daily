@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { addOneDay, buildNextDayContent } from '../daily-ui/src/utils/rollForward.js'
+import { addOneDay, buildNextDayContent } from '../src/utils/rollForward.js'
 
 function section(content, heading, nextHeading) {
   const start = content.indexOf(`## ${heading}\n`)

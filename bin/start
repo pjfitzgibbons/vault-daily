@@ -17,11 +17,11 @@ needs_build() {
     return 0
   fi
 
-  if find "$ROOT_DIR/daily-ui/src" -type f -newer "$DIST_INDEX" -print -quit | grep -q .; then
+  if find "$ROOT_DIR/src" -type f -newer "$DIST_INDEX" -print -quit | grep -q .; then
     return 0
   fi
 
-  if find "$ROOT_DIR/daily-ui" -maxdepth 1 -type f \( -name "package.json" -o -name "vite.config.js" \) -newer "$DIST_INDEX" -print -quit | grep -q .; then
+  if find "$ROOT_DIR" -maxdepth 1 -type f \( -name "package.json" -o -name "vite.config.js" -o -name "index.html" \) -newer "$DIST_INDEX" -print -quit | grep -q .; then
     return 0
   fi
 
@@ -29,8 +29,8 @@ needs_build() {
 }
 
 if needs_build; then
-  echo "UI build is missing or stale. Building daily-ui ..."
-  npm run build --prefix daily-ui
+  echo "UI build is missing or stale. Building frontend ..."
+  npm run build
 fi
 
 if ! is_up; then

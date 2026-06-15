@@ -12,7 +12,7 @@ vault/
 ├── package.json           # adds "dev" and "build" scripts
 ├── daily/                 # markdown files (YYYY-MM-DD.md)
 ├── projects/              # wikilink targets (*.md)
-├── daily-ui/              # Vue 3 + Vite source
+├── src/                   # Vue 3 + Vite source
 │   ├── index.html
 │   ├── vite.config.js
 │   ├── src/
@@ -244,7 +244,7 @@ node server.js       # serves dist/ on :8080
 
 ## Migration strategy
 
-1. Scaffold `daily-ui/` alongside existing `daily.html` (no breakage)
+1. Scaffold `src/` alongside existing `daily.html` (no breakage)
 2. Port `utils/` first — they are pure JS, fully testable, no Vue dependency
 3. Add `/api/projects` to `server.js`
 4. Build components bottom-up: `WikilinkInput` → `TaskRow` → `TaskPanel` → panels → `App`

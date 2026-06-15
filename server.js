@@ -170,7 +170,7 @@ async function handle(req, res) {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
       return res.end(html);
     } catch {
-      res.writeHead(404); return res.end('No index found. Run: cd daily-ui && npm run build');
+      res.writeHead(404); return res.end('No index found. Run: npm run build');
     }
   }
 

@@ -3,6 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      target: runtime
     ports:
       - "8008:8008"
     environment:
@@ -22,3 +23,10 @@ services:
       - ./daily:/app/daily
       - ./projects:/app/projects
       - ./config.json:/app/config.json:ro
+
+  vault-test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: test
+    profiles: ["test"]
