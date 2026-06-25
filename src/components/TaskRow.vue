@@ -38,6 +38,7 @@
     <WikilinkInput
       :model-value="task.body"
       :projects="projects"
+      :jira-base-url="jiraBaseUrl"
       @update:model-value="onBodyEdit"
       @commit="onBodyCommit"
       @cancel="() => {}"
@@ -57,6 +58,7 @@ import WikilinkInput from './WikilinkInput.vue'
 const props = defineProps({
   task:     { type: Object,  required: true },
   projects: { type: Array,   default: () => [] },
+  jiraBaseUrl: { type: String, default: '' },
   rawContent: { type: String, required: true },
 })
 const emit = defineEmits(['change', 'delete'])

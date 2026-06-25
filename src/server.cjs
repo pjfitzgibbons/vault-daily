@@ -10,11 +10,17 @@ const logger = require('./logger.cjs');
 // ── Config ─────────────────────────────────────────────────────────────────────
 const APP_ROOT = path.resolve(__dirname, '..');
 const CONFIG_PATH = path.join(APP_ROOT, 'config.json');
+const CONFIG_TEMPLATE_PATH = path.join(APP_ROOT, 'config.template.json');
 let config = {};
 try {
   config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
 } catch {
-  logger.warn('No config.json found; using defaults and environment variables.');
+  const hasTemplate = fs.existsSync(CONFIG_TEMPLATE_PATH);
+  logger.warn({
+    configPath: CONFIG_PATH,
+    templatePath: hasTemplate ? CONFIG_TEMPLATE_PATH : null,
+    copyCommand: hasTemplate ? 'cp config.template.json config.json' : null,
+  }, 'No config.json found; using defaults and environment variables.');
 }
 
 config.jira = config.jira || {};

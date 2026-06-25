@@ -8,7 +8,11 @@
     </div>
     <div class="spacer" />
     <button data-action="roll-forward" @click="emit('roll-forward')">↻ Roll Forward</button>
-    <button data-action="standup-open" @click="emit('submit-standup')">☁ Standup</button>
+    <button
+      data-action="standup-open"
+      :disabled="submitting"
+      @click="emit('submit-standup')"
+    >☁ Standup</button>
     <button class="primary" :disabled="!dirty" data-action="save" @click="emit('save')">Save</button>
   </header>
 </template>
@@ -20,6 +24,7 @@ import { todayStr, addOneDay, subOneDay } from '../utils/rollForward.js'
 const props = defineProps({
   currentDate: { type: String, required: true },
   dirty:       { type: Boolean, default: false },
+  submitting:  { type: Boolean, default: false },
 })
 const emit = defineEmits(['navigate', 'roll-forward', 'submit-standup', 'save'])
 

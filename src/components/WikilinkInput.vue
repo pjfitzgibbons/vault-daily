@@ -2,6 +2,14 @@
   <span v-if="!editing" class="wikilink-display" @click="startEdit">
     <template v-for="(part, i) in displayParts" :key="i">
       <span v-if="part.type === 'link'" class="wikilink-badge">{{ part.text }}</span>
+      <a
+        v-else-if="part.type === 'ticket' && jiraIssueUrl(part.text)"
+        class="ticket-ref"
+        :href="jiraIssueUrl(part.text)"
+        target="_blank"
+        rel="noopener noreferrer"
+        @click.stop
+      >{{ part.text }}</a>
       <span v-else-if="part.type === 'ticket'" class="ticket-ref">{{ part.text }}</span>
       <span v-else>{{ part.text }}</span>
     </template>
@@ -28,11 +36,13 @@
 </template>
 
 <script setup>
-import { ref, computed, nextTick } from 'vue'
+import { ref, computed, nextTick, onMounted } from 'vue'
 
 const props = defineProps({
   modelValue: { type: String, default: '' },
   projects:   { type: Array,  default: () => [] },
+  jiraBaseUrl:{ type: String, default: '' },
+  autoEdit:   { type: Boolean, default: false },
 })
 const emit = defineEmits(['update:modelValue', 'commit', 'cancel'])
 
@@ -75,6 +85,10 @@ function startEdit() {
     inputEl.value?.select()
   })
 }
+
+onMounted(() => {
+  if (props.autoEdit) startEdit()
+})
 
 function onInput() {
   const val = draft.value
@@ -136,6 +150,12 @@ function cancel() {
   triggerStart  = -1
   emit('cancel')
 }
+
+function jiraIssueUrl(ticket) {
+  const base = String(props.jiraBaseUrl || '').replace(/\/$/, '')
+  if (!base) return ''
+  return `${base}/browse/${ticket}`
+}
 </script>
 
 <style scoped>
@@ -156,12 +176,19 @@ function cancel() {
   margin: 0 1px;
 }
 .ticket-ref {
+  display: inline-block;
   color: #007acc;
   font-size: 11px;
   font-weight: 600;
   background: rgba(0,122,204,.13);
   padding: 1px 4px;
   border-radius: 2px;
+  text-decoration: none;
+  cursor: pointer;
+}
+.ticket-ref:hover {
+  text-decoration: underline;
+  background: rgba(0,122,204,.25);
 }
 .wikilink-edit-wrap {
   position: relative;

@@ -2,13 +2,17 @@
   <AppToolbar
     :current-date="currentDate"
     :dirty="dirty"
+    :submitting="jiraSubmitting"
     @navigate="onNavigate"
     @roll-forward="onRollForwardClick"
     @submit-standup="onStandupButtonClick"
     @save="onSaveClick"
   />
 
-  <div id="status-bar">{{ status }}</div>
+  <div id="status-bar">
+    <span class="file-status">{{ status }}</span>
+    <span v-if="jiraStatus" class="standup-status" :class="jiraStatusClass">{{ jiraStatus }}</span>
+  </div>
   <div v-if="!fileExists && rawContent === ''" id="no-file-banner">
     No file for this date. Start editing to create it when you save.
   </div>
@@ -28,6 +32,7 @@
       section="Tasks"
       :lines="sections['Tasks'] || []"
       :projects="projects"
+      :jira-base-url="jiraBaseUrl"
       :raw-content="rawContent"
       @update:raw-content="mutate"
     />
@@ -42,19 +47,11 @@
       section="On Deck"
       :lines="sections['On Deck'] || []"
       :projects="projects"
+      :jira-base-url="jiraBaseUrl"
       :raw-content="rawContent"
       @update:raw-content="mutate"
     />
   </main>
-
-  <JiraModal
-    :open="jiraOpen"
-    :submitting="jiraSubmitting"
-    :status-msg="jiraStatus"
-    :status-class="jiraStatusClass"
-    @close="onJiraModalClose"
-    @submit="onJiraModalSubmit"
-  />
 </template>
 
 <script setup>
@@ -70,12 +67,16 @@ import AppToolbar   from './components/AppToolbar.vue'
 import StandupPanel from './components/StandupPanel.vue'
 import TaskPanel    from './components/TaskPanel.vue'
 import NotesPanel   from './components/NotesPanel.vue'
-import JiraModal    from './components/JiraModal.vue'
 
 const { rawContent, currentDate, fileExists, dirty, status, sections, loadDate, save, rollForward, mutate } = useDaily()
 const { projects } = useProjects()
+const jiraBaseUrl = ref('')
 
 const mainEl = ref(null)
+const jiraSubmitting = ref(false)
+const jiraStatus = ref('')
+const jiraStatusClass = ref('')
+let jiraStatusTimeout = null
 useSplitter(mainEl)
 
 const standup = computed(() => parseStandup(sections.value['Standup'] || []))
@@ -203,42 +204,18 @@ async function onSaveClick() {
 function onStandupButtonClick() {
   logClient('info', 'toolbar.standup.clicked', {
     date: currentDate.value,
-    modalOpen: jiraOpen.value,
   }, 'Standup top-nav button clicked')
-  jiraOpen.value = true
-}
-
-function onJiraModalClose(source = 'unknown') {
-  logClient('info', 'jira-modal.close', {
-    source,
-    date: currentDate.value,
-    statusClass: jiraStatusClass.value,
-  }, 'Jira modal closed')
-  jiraOpen.value = false
-}
-
-function onJiraModalSubmit(source = 'modal-submit') {
-  logClient('info', 'jira-modal.submit.clicked', {
-    source,
-    date: currentDate.value,
-  }, 'Jira modal submit clicked')
   void submitStandup()
-}
-
-// ── Jira ───────────────────────────────────────────────────────────────────────
-const jiraOpen         = ref(false)
-const jiraSubmitting   = ref(false)
-const jiraStatus       = ref('')
-const jiraStatusClass  = ref('')
-
-async function parseJsonSafe(res) {
-  return res.json().catch(() => ({}))
 }
 
 function normalizeClientLevel(level) {
   const v = String(level || '').toLowerCase()
   if (v === 'debug' || v === 'info' || v === 'warn' || v === 'error') return v
   return 'info'
+}
+
+async function parseJsonSafe(res) {
+  return res.json().catch(() => ({}))
 }
 
 async function sendClientLog(level, event, data = {}, message = '') {
@@ -281,7 +258,7 @@ function targetLabel(target) {
 function interactionPayload(evt) {
   const el = evt.target
   if (!el || !el.closest) return null
-  const interactive = el.closest('button,input,textarea,select,[role="button"],.status-badge,.wikilink-display')
+  const interactive = el.closest('button,input,textarea,select,a[href],[role="button"],.status-badge,.wikilink-display')
   if (!interactive) return null
 
   const payload = {
@@ -311,14 +288,15 @@ function onUiInteraction(evt) {
   logClient('debug', `ui.interaction.${evt.type}`, payload, 'UI interaction')
 }
 
-async function jiraBrowserFetch(baseUrl, path, { method = 'GET', body } = {}) {
+// ── Jira Standup Submit ────────────────────────────────────────────────────────
+function jiraBrowserFetch(baseUrl, path, { method = 'GET', body } = {}) {
   logClient('debug', 'jira-browser.request.start', {
     method,
     path,
     hasBody: !!body,
     credentialMode: 'include',
   }, 'Browser Jira request start')
-  const res = await fetch(`${String(baseUrl || '').replace(/\/$/, '')}${path}`, {
+  return fetch(`${String(baseUrl || '').replace(/\/$/, '')}${path}`, {
     method,
     credentials: 'include',
     headers: {
@@ -326,26 +304,26 @@ async function jiraBrowserFetch(baseUrl, path, { method = 'GET', body } = {}) {
       ...(body ? { 'Content-Type': 'application/json' } : {}),
     },
     ...(body ? { body: JSON.stringify(body) } : {}),
-  })
-
-  logClient('debug', 'jira-browser.request.response', {
-    method,
-    path,
-    status: res.status,
-  }, 'Browser Jira response received')
-
-  if (!res.ok) {
-    const msg = await res.text().catch(() => '')
-    logClient('warn', 'jira-browser.request.failed', {
+  }).then(async res => {
+    logClient('debug', 'jira-browser.request.response', {
       method,
       path,
       status: res.status,
-      message: msg,
-    }, 'Browser Jira request failed')
-    throw new Error(`Jira ${res.status}${msg ? `: ${msg}` : ''}`)
-  }
-  if (res.status === 204) return null
-  return res.json().catch(() => null)
+    }, 'Browser Jira response received')
+
+    if (!res.ok) {
+      const msg = await res.text().catch(() => '')
+      logClient('warn', 'jira-browser.request.failed', {
+        method,
+        path,
+        status: res.status,
+        message: msg,
+      }, 'Browser Jira request failed')
+      throw new Error(`Jira ${res.status}${msg ? `: ${msg}` : ''}`)
+    }
+    if (res.status === 204) return null
+    return res.json().catch(() => null)
+  })
 }
 
 function toAdfBullet(items) {
@@ -376,7 +354,7 @@ async function submitStandupViaBrowserSession(date, sd) {
   const cfg = await parseJsonSafe(cfgRes)
   if (!cfgRes.ok) throw new Error(cfg.error || `HTTP ${cfgRes.status}`)
 
-  const baseUrl = (cfg.baseUrl || '').trim()
+  const baseUrl = String(jiraBaseUrl.value || cfg.baseUrl || '').trim()
   const fields = cfg.fields || {}
   if (!baseUrl) throw new Error('Jira baseUrl is missing in config.json')
   logClient('debug', 'standup-submit.browser-fallback.config-loaded', {
@@ -390,6 +368,7 @@ async function submitStandupViaBrowserSession(date, sd) {
     date,
     accountId: me?.accountId,
   }, 'Standup browser session user resolved')
+
   const search = await jiraBrowserFetch(baseUrl, '/rest/api/3/search/jql', {
     method: 'POST',
     body: {
@@ -442,9 +421,13 @@ async function submitStandupViaBrowserSession(date, sd) {
 }
 
 async function submitStandup() {
+  if (jiraSubmitting.value) return
+  
   jiraSubmitting.value = true
   jiraStatus.value = 'Submitting…'
   jiraStatusClass.value = ''
+  clearTimeout(jiraStatusTimeout)
+  
   const sd = standup.value
   logClient('info', 'standup-submit.started', {
     date: currentDate.value,
@@ -452,6 +435,7 @@ async function submitStandup() {
     todayCount: (sd.today || []).length,
     blockersLength: (sd.blockers || '').length,
   }, 'Standup submit started')
+  
   try {
     const res = await fetch('/api/jira/standup', {
       method: 'POST',
@@ -506,6 +490,13 @@ async function submitStandup() {
       submitting: jiraSubmitting.value,
       statusClass: jiraStatusClass.value,
     }, 'Standup submit finished')
+    
+    if (jiraStatusClass.value === 'ok') {
+      jiraStatusTimeout = setTimeout(() => {
+        jiraStatus.value = ''
+        jiraStatusClass.value = ''
+      }, 5000)
+    }
   }
 }
 
@@ -522,6 +513,21 @@ onMounted(() => {
 
   window.addEventListener('popstate', onPopState)
 
+  void (async () => {
+    try {
+      const cfgRes = await fetch('/api/jira/config')
+      const cfg = await parseJsonSafe(cfgRes)
+      jiraBaseUrl.value = String(cfg?.baseUrl || '').replace(/\/$/, '')
+      logClient('debug', 'jira.base-url.loaded', {
+        hasBaseUrl: !!jiraBaseUrl.value,
+      }, 'Jira base URL loaded for ticket links')
+    } catch (e) {
+      logClient('warn', 'jira.base-url.failed', {
+        message: e?.message || String(e),
+      }, 'Failed to load Jira base URL')
+    }
+  })()
+
   document.addEventListener('click', onUiInteraction, true)
   document.addEventListener('change', onUiInteraction, true)
   document.addEventListener('input', onUiInteraction, true)
@@ -531,9 +537,6 @@ onMounted(() => {
   document.addEventListener('keydown', e => {
     const mod = e.metaKey || e.ctrlKey
     if (mod && e.key === 's') { e.preventDefault(); if (dirty.value) save() }
-    if (e.key === 'Escape' && jiraOpen.value) {
-      onJiraModalClose('escape')
-    }
   })
 })
 
@@ -543,13 +546,6 @@ watch(currentDate, d => {
     date: d,
   }, 'Current date changed')
   syncUrlToDate(d)
-})
-
-watch(jiraOpen, open => {
-  logClient('debug', 'jira-modal.state-changed', {
-    open,
-    date: currentDate.value,
-  }, 'Jira modal state changed')
 })
 
 onBeforeUnmount(() => {
@@ -581,7 +577,17 @@ body {
   background: #252526;
   border-bottom: 1px solid #3e3e42;
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
+.file-status { flex: 1; }
+.standup-status {
+  font-weight: 500;
+  white-space: nowrap;
+}
+.standup-status.ok  { color: #89d185; }
+.standup-status.err { color: #f14c4c; }
 #no-file-banner {
   background: rgba(212,160,23,.08);
   border-bottom: 1px solid rgba(212,160,23,.3);

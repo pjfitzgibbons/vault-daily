@@ -10,6 +10,7 @@
       :key="task.raw"
       :task="task"
       :projects="projects"
+      :jira-base-url="jiraBaseUrl"
       :raw-content="rawContent"
       @change="onTaskChange"
       @delete="onDelete"
@@ -22,6 +23,8 @@
         v-else
         model-value=""
         :projects="projects"
+        :jira-base-url="jiraBaseUrl"
+        :auto-edit="true"
         @commit="onAdd"
         @cancel="adding = false"
       />
@@ -41,6 +44,7 @@ const props = defineProps({
   section:    { type: String, required: true },   // "Tasks" | "On Deck"
   lines:      { type: Array,  default: () => [] },
   projects:   { type: Array,  default: () => [] },
+  jiraBaseUrl:{ type: String, default: '' },
   rawContent: { type: String, required: true },
 })
 const emit = defineEmits(['update:rawContent'])
