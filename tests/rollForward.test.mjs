@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { addOneDay, buildNextDayContent } from '../src/utils/rollForward.js'
+import { addOneDay, buildNextDayContent, isFriday } from '../src/utils/rollForward.js'
 
 function section(content, heading, nextHeading) {
   const start = content.indexOf(`## ${heading}\n`)
@@ -32,4 +32,21 @@ test('roll forward includes worked On Deck items in Standup Today and Tasks', ()
 
 test('addOneDay skips weekend', () => {
   assert.equal(addOneDay('2026-06-12'), '2026-06-15')
+})
+
+test('Weekly Update is appended only on Fridays', () => {
+  // 2026-07-10 is a Friday.
+  assert.equal(isFriday('2026-07-10'), true)
+  const friday = buildNextDayContent('2026-07-10', [], [], [], [], [])
+  assert.match(friday, /## Weekly Update/)
+  assert.match(friday, /### Wins this week/)
+  assert.match(friday, /### Unblocked or moved forward/)
+  assert.match(friday, /### Risks or blockers on my radar/)
+  assert.match(friday, /### Priorities for next week/)
+  assert.match(friday, /Kindest Regards,\nPeter Fitzgibbons/)
+
+  // 2026-07-09 is a Thursday — no Weekly Update.
+  assert.equal(isFriday('2026-07-09'), false)
+  const thursday = buildNextDayContent('2026-07-09', [], [], [], [], [])
+  assert.doesNotMatch(thursday, /## Weekly Update/)
 })

@@ -15,6 +15,7 @@
 
 <script setup>
 import { ref, watch, nextTick } from 'vue'
+import { useAutosize } from '../composables/useAutosize.js'
 
 const props = defineProps({
   lines: { type: Array, default: () => [] },
@@ -23,6 +24,8 @@ const emit = defineEmits(['change'])
 
 const draft = ref('')
 const taRef = ref(null)
+
+useAutosize(taRef, () => draft.value)
 
 watch(() => props.lines, lines => {
   draft.value = lines.join('\n').trimEnd()
@@ -52,9 +55,9 @@ function insertTime() {
 .notes-panel {
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-  background: #252526;
-  border: 1px solid #3e3e42;
+  overflow-y: auto;
+  background: var(--c-bg-panel);
+  border: 1px solid var(--c-border);
   border-radius: 4px;
   padding: 10px 12px 12px;
   min-height: 0;
@@ -64,40 +67,40 @@ h2 {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: .07em;
-  color: #808080;
+  color: var(--c-text-dim);
   margin: 0 0 10px;
   padding-bottom: 6px;
-  border-bottom: 1px solid #3e3e42;
+  border-bottom: 1px solid var(--c-border);
   flex-shrink: 0;
 }
 textarea {
-  flex: 1;
-  min-height: 0;
+  min-height: 80px;
   width: 100%;
-  background: #2d2d30;
-  border: 1px solid #3e3e42;
-  color: #cccccc;
+  background: var(--c-bg-input);
+  border: 1px solid var(--c-border);
+  color: var(--c-text);
   padding: 7px 8px;
   font-family: 'SF Mono', 'Consolas', 'Menlo', monospace;
   font-size: 12px;
   border-radius: 3px;
-  resize: none;
+  resize: vertical;
+  overflow-y: hidden;
   box-sizing: border-box;
 }
 textarea:focus {
   outline: none;
-  border-color: #007acc;
-  box-shadow: 0 0 0 1px #007acc;
+  border-color: var(--c-accent);
+  box-shadow: 0 0 0 1px var(--c-accent);
 }
 .footer { flex-shrink: 0; margin-top: 7px; }
 button {
-  background: #2d2d30;
-  border: 1px solid #3e3e42;
-  color: #cccccc;
+  background: var(--c-bg-input);
+  border: 1px solid var(--c-border);
+  color: var(--c-text);
   padding: 4px 10px;
   border-radius: 3px;
   cursor: pointer;
   font-size: 13px;
 }
-button:hover { background: #3e3e42; }
+button:hover { background: var(--c-border); }
 </style>

@@ -167,8 +167,8 @@ function jiraIssueUrl(ticket) {
 }
 .wikilink-badge {
   display: inline-block;
-  background: rgba(0,122,204,.13);
-  color: #6b9bd2;
+  background: var(--c-accent-soft);
+  color: var(--c-status-wip);
   border-radius: 3px;
   padding: 0 4px;
   font-size: 11px;
@@ -177,10 +177,10 @@ function jiraIssueUrl(ticket) {
 }
 .ticket-ref {
   display: inline-block;
-  color: #007acc;
+  color: var(--c-accent);
   font-size: 11px;
   font-weight: 600;
-  background: rgba(0,122,204,.13);
+  background: var(--c-accent-soft);
   padding: 1px 4px;
   border-radius: 2px;
   text-decoration: none;
@@ -188,7 +188,7 @@ function jiraIssueUrl(ticket) {
 }
 .ticket-ref:hover {
   text-decoration: underline;
-  background: rgba(0,122,204,.25);
+  background: var(--c-accent-soft-hover);
 }
 .wikilink-edit-wrap {
   position: relative;
@@ -197,11 +197,11 @@ function jiraIssueUrl(ticket) {
 }
 .task-edit-input {
   flex: 1;
-  background: #2d2d30;
-  border: 1px solid #007acc;
-  box-shadow: 0 0 0 1px #007acc;
+  background: var(--c-bg-input);
+  border: 1px solid var(--c-accent);
+  box-shadow: 0 0 0 1px var(--c-accent);
   border-radius: 3px;
-  color: #cccccc;
+  color: var(--c-text);
   font-family: inherit;
   font-size: 13px;
   padding: 1px 6px;
@@ -213,10 +213,10 @@ function jiraIssueUrl(ticket) {
   top: calc(100% + 3px);
   left: 0;
   min-width: 180px;
-  background: #2d2d30;
-  border: 1px solid #3e3e42;
+  background: var(--c-bg-input);
+  border: 1px solid var(--c-border);
   border-radius: 4px;
-  box-shadow: 0 4px 12px rgba(0,0,0,.4);
+  box-shadow: 0 4px 12px var(--c-shadow);
   z-index: 200;
   list-style: none;
   margin: 0;
@@ -226,11 +226,11 @@ function jiraIssueUrl(ticket) {
 .wl-dropdown li {
   padding: 5px 12px;
   cursor: pointer;
-  color: #cccccc;
+  color: var(--c-text);
   white-space: nowrap;
 }
 .wl-dropdown li:hover,
 .wl-dropdown li.active {
-  background: rgba(255,255,255,.07);
+  background: var(--c-overlay-hover);
 }
 </style>

@@ -45,8 +45,8 @@ const current = computed(() => ({
 .panel {
   overflow-y: auto;
   min-height: 0;
-  background: #252526;
-  border: 1px solid #3e3e42;
+  background: var(--c-bg-panel);
+  border: 1px solid var(--c-border);
   border-radius: 4px;
   padding: 10px 12px 12px;
 }
@@ -55,24 +55,24 @@ h2 {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: .07em;
-  color: #808080;
+  color: var(--c-text-dim);
   margin: 0 0 10px;
   padding-bottom: 6px;
-  border-bottom: 1px solid #3e3e42;
+  border-bottom: 1px solid var(--c-border);
 }
 .sf { margin-bottom: 9px; }
 .sf label {
   display: block;
   font-size: 11px;
-  color: #808080;
+  color: var(--c-text-dim);
   font-weight: 600;
   margin-bottom: 3px;
 }
 .sf textarea, .sf input[type=text] {
   width: 100%;
-  background: #2d2d30;
-  border: 1px solid #3e3e42;
-  color: #cccccc;
+  background: var(--c-bg-input);
+  border: 1px solid var(--c-border);
+  color: var(--c-text);
   padding: 5px 8px;
   font-family: inherit;
   font-size: 13px;
@@ -82,7 +82,7 @@ h2 {
 .sf textarea { min-height: 56px; resize: vertical; }
 .sf textarea:focus, .sf input:focus {
   outline: none;
-  border-color: #007acc;
-  box-shadow: 0 0 0 1px #007acc;
+  border-color: var(--c-accent);
+  box-shadow: 0 0 0 1px var(--c-accent);
 }
 </style>

@@ -1,5 +1,13 @@
 <template>
   <div class="task-item" :class="{ done: task.done, worked: task.workedToday }">
+    <!-- drag handle -->
+    <span
+      class="task-grip"
+      draggable="true"
+      title="Drag to move between Tasks and On Deck"
+      @dragstart="onDragStart"
+    >⠿</span>
+
     <!-- checkbox -->
     <input type="checkbox" :checked="task.done" @change="onCheckbox" />
 
@@ -52,11 +60,12 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { STATUS_LIST, STATUS_COLORS } from '../utils/parser.js'
-import { rewriteTaskStatus, editTaskBody, toggleWorkedToday, ensureWorkedFlagOnLine } from '../utils/mutations.js'
+import { rewriteTaskStatus, editTaskBody, toggleWorkedToday, ensureWorkedFlagOnLine, TASK_DRAG_MIME } from '../utils/mutations.js'
 import WikilinkInput from './WikilinkInput.vue'
 
 const props = defineProps({
   task:     { type: Object,  required: true },
+  section:  { type: String,  default: 'Tasks' },
   projects: { type: Array,   default: () => [] },
   jiraBaseUrl: { type: String, default: '' },
   rawContent: { type: String, required: true },
@@ -106,9 +115,15 @@ function onBodyCommit(newBody) {
   const body = (newBody ?? pendingBody ?? '').trim()
   pendingBody = null
   if (!body || body === props.task.body) return
-  const newRaw = editTaskBody(props.rawContent, props.task.raw, body)
+  const newRaw = editTaskBody(props.rawContent, props.task.raw, body, { autoWorked: props.section !== 'On Deck' })
   // editTaskBody returns full rawContent — emit a special signal
   emit('change', { oldRaw: props.task.raw, fullContent: newRaw })
+}
+
+function onDragStart(e) {
+  e.dataTransfer.effectAllowed = 'move'
+  e.dataTransfer.setData(TASK_DRAG_MIME, JSON.stringify({ raw: props.task.raw, section: props.section }))
+  e.dataTransfer.setDragImage(e.currentTarget.closest('.task-item'), 0, 0)
 }
 
 // Close menu on outside click
@@ -124,24 +139,35 @@ onBeforeUnmount(() => document.removeEventListener('click', onOutsideClick))
 <style scoped>
 .task-item {
   display: grid;
-  grid-template-columns: 18px 18px 74px 1fr 18px;
+  grid-template-columns: 10px 18px 18px 74px 1fr 18px;
   align-items: baseline;
   gap: 0 7px;
   padding: 3px 5px;
   border-radius: 3px;
   line-height: 1.4;
 }
-.task-item:hover { background: #2d2d30; }
+.task-item:hover { background: var(--c-bg-input); }
 .task-item:hover .task-delete { opacity: 1; }
+.task-grip {
+  opacity: 0;
+  transition: opacity .12s;
+  cursor: grab;
+  color: var(--c-text-faint);
+  font-size: 11px;
+  line-height: 1.4;
+  user-select: none;
+}
+.task-item:hover .task-grip { opacity: 1; }
+.task-grip:active { cursor: grabbing; }
 .task-item input[type=checkbox] {
   margin-top: 2px;
   cursor: pointer;
   justify-self: center;
-  accent-color: #4ec9b0;
+  accent-color: var(--c-done);
 }
 .task-item.done :deep(.wikilink-display) {
   text-decoration: line-through;
-  color: #808080;
+  color: var(--c-text-dim);
 }
 /* status */
 .task-status {
@@ -157,8 +183,8 @@ onBeforeUnmount(() => document.removeEventListener('click', onOutsideClick))
   font-weight: 700;
   padding: 2px 6px;
   border-radius: 3px;
-  background: rgba(255,255,255,.06);
-  border: 1px solid rgba(255,255,255,.1);
+  background: var(--c-overlay-soft);
+  border: 1px solid var(--c-overlay-border);
   cursor: pointer;
   white-space: nowrap;
   user-select: none;
@@ -170,10 +196,10 @@ onBeforeUnmount(() => document.removeEventListener('click', onOutsideClick))
   position: absolute;
   right: 0;
   top: calc(100% + 3px);
-  background: #2d2d30;
-  border: 1px solid #3e3e42;
+  background: var(--c-bg-input);
+  border: 1px solid var(--c-border);
   border-radius: 4px;
-  box-shadow: 0 4px 12px rgba(0,0,0,.4);
+  box-shadow: 0 4px 12px var(--c-shadow);
   z-index: 100;
   min-width: 110px;
   padding: 3px 0;
@@ -187,7 +213,7 @@ onBeforeUnmount(() => document.removeEventListener('click', onOutsideClick))
   cursor: pointer;
   white-space: nowrap;
 }
-.status-menu li:hover { background: rgba(255,255,255,.07); }
+.status-menu li:hover { background: var(--c-overlay-hover); }
 .status-menu li.active { opacity: .5; cursor: default; }
 /* delete */
 .task-delete {
@@ -195,7 +221,7 @@ onBeforeUnmount(() => document.removeEventListener('click', onOutsideClick))
   transition: opacity .12s;
   background: none;
   border: none;
-  color: #808080;
+  color: var(--c-text-dim);
   cursor: pointer;
   padding: 0 2px;
   font-size: 14px;
@@ -203,14 +229,14 @@ onBeforeUnmount(() => document.removeEventListener('click', onOutsideClick))
   align-self: start;
   margin-top: 1px;
 }
-.task-delete:hover { color: #f66; opacity: 1 !important; }
+.task-delete:hover { color: var(--c-danger); opacity: 1 !important; }
 
 /* worked-today */
 .task-worked {
   transition: color .12s;
   background: none;
   border: none;
-  color: #3e3e42;
+  color: var(--c-border);
   cursor: pointer;
   padding: 0;
   font-size: 12px;
@@ -220,9 +246,9 @@ onBeforeUnmount(() => document.removeEventListener('click', onOutsideClick))
   justify-self: center;
 }
 .task-worked.active {
-  color: #d4a017;
+  color: var(--c-warn);
 }
-.task-worked:hover:not(.active) { color: #808080; }
+.task-worked:hover:not(.active) { color: var(--c-text-dim); }
 .task-worked-placeholder { display: block; }
-.task-item.worked { background: rgba(212, 160, 23, .04); }
+.task-item.worked { background: var(--c-warn-row); }
 </style>

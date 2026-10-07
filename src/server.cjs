@@ -32,6 +32,12 @@ if (process.env.JIRA_FIELDS_YESTERDAY) config.jira.fields.yesterday = process.en
 if (process.env.JIRA_FIELDS_TODAY) config.jira.fields.today = process.env.JIRA_FIELDS_TODAY;
 if (process.env.JIRA_FIELDS_BLOCKERS) config.jira.fields.blockers = process.env.JIRA_FIELDS_BLOCKERS;
 
+// Anthropic (Claude) — used to draft the Friday "Weekly Update" from the week's notes.
+config.anthropic = config.anthropic || {};
+if (process.env.ANTHROPIC_API_KEY) config.anthropic.apiKey = process.env.ANTHROPIC_API_KEY;
+if (process.env.ANTHROPIC_MODEL) config.anthropic.model = process.env.ANTHROPIC_MODEL;
+const ANTHROPIC_MODEL = config.anthropic.model || 'claude-opus-4-8';
+
 const PORT        = Number(process.env.PORT)       || config.port      || 8080;
 const HOST        = process.env.HOST               || config.host      || '127.0.0.1';
 const ALLOW_REMOTE = process.env.ALLOW_REMOTE === '1' || config.allowRemote === true;
@@ -39,7 +45,6 @@ const VAULT_PATH  = process.env.VAULT_PATH          || path.resolve(APP_ROOT, co
 const DAILY_DIR   = path.join(VAULT_PATH, 'daily');
 const PROJECTS_DIR = path.join(VAULT_PATH, 'projects');
 const DIST_DIR    = path.join(APP_ROOT, 'dist');
-const HTML_FILE   = path.join(__dirname, 'daily.html');
 const DATE_RE     = /^\d{4}-\d{2}-\d{2}$/;
 
 function todayStr() {
@@ -129,6 +134,207 @@ function jiraReq(urlPath, method, bodyObj) {
   });
 }
 
+// ── Anthropic (server-side proxy — keeps the API key out of the browser) ──────
+function anthropicReq(bodyObj) {
+  const key = (config.anthropic || {}).apiKey;
+  if (!key) {
+    logger.error('Weekly-update draft aborted: Anthropic API key not configured');
+    return Promise.reject(new Error('Anthropic not configured — set anthropic.apiKey in config.json or ANTHROPIC_API_KEY'));
+  }
+
+  const body = JSON.stringify(bodyObj);
+  return new Promise((resolve, reject) => {
+    const req = https.request({
+      hostname: 'api.anthropic.com',
+      port: 443,
+      path: '/v1/messages',
+      method: 'POST',
+      headers: {
+        'x-api-key': key,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+        'content-length': Buffer.byteLength(body),
+      },
+    }, r => {
+      let d = '';
+      r.on('data', c => { d += c; });
+      r.on('end', () => {
+        if (r.statusCode >= 400) return reject(new Error(`Anthropic ${r.statusCode}: ${d}`));
+        try { resolve(JSON.parse(d)); } catch { reject(new Error('Malformed Anthropic response')); }
+      });
+    });
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
+}
+
+// Concatenate the text blocks of a Messages API response (skips thinking blocks).
+function extractText(msg) {
+  return ((msg && msg.content) || [])
+    .filter(b => b && b.type === 'text')
+    .map(b => b.text)
+    .join('')
+    .trim();
+}
+
+// ── ESM utils (parser.js/mutations.js/rollForward.js are ESM; this file is CJS) ─
+let esmUtilsPromise = null;
+function loadEsmUtils() {
+  if (!esmUtilsPromise) {
+    esmUtilsPromise = Promise.all([
+      import(url.pathToFileURL(path.join(__dirname, 'utils', 'parser.js')).href),
+      import(url.pathToFileURL(path.join(__dirname, 'utils', 'mutations.js')).href),
+      import(url.pathToFileURL(path.join(__dirname, 'utils', 'rollForward.js')).href),
+    ]).then(([parser, mutations, rollForward]) => ({ parser, mutations, rollForward }));
+  }
+  return esmUtilsPromise;
+}
+
+// ── Weekly Update draft ───────────────────────────────────────────────────────
+const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+const WEEKLY_UPDATE_SYSTEM = [
+  'You are drafting Peter Fitzgibbons\'s end-of-week "Weekly Update" note to his manager, Karen.',
+  'You are given Peter\'s own daily working notes for the week — Standup entries (Yesterday/Today/Blockers),',
+  'Tasks with status prefixes (wip, in-review, reviewing, needs-qa, qa, done), freeform Notes, and time-logged',
+  'work entries. Write a concise, honest weekly update grounded ONLY in those notes. Do not invent work,',
+  'metrics, ticket numbers, or outcomes that are not present in the notes.',
+  '',
+  'Reply with ONLY the update body in Markdown — no preamble, no explanation, no code fences — following this',
+  'exact skeleton (keep all four "###" headings, the greeting, and the sign-off verbatim):',
+  '',
+  'Hi Karen,',
+  '',
+  'Quick end-of-week snapshot.',
+  '',
+  '### Wins this week',
+  '- <bullet>',
+  '',
+  '### Unblocked or moved forward',
+  '- <bullet>',
+  '',
+  '### Risks or blockers on my radar',
+  '- <bullet>',
+  '',
+  '### Priorities for next week',
+  '- <bullet>',
+  '',
+  'Kindest Regards,',
+  'Peter Fitzgibbons',
+  '',
+  'Guidance:',
+  '- Each bullet is one line of plain business English, outcome-first (lead with the result, not the activity).',
+  '- Preserve ticket references (e.g. CIAM-20, DP-317) in parentheses where the notes attribute work to them.',
+  '- Production Support tickets (prefix "SUPP-") are the exception: do NOT describe them individually — collapse',
+  '  them into a single count, e.g. "Addressed 2 Production Support tickets (SUPP-1234, SUPP-1235)". List the',
+  '  individual SUPP- numbers in parentheses only when there are 3 or fewer; if there are more than 3, give just',
+  '  the count with no numbers, e.g. "Addressed 6 Production Support tickets".',
+  '- "Wins this week" = shipped / completed / done items. "Unblocked or moved forward" = progress on in-flight',
+  '  work. "Risks or blockers" = anything flagged blocked, at risk, or a concern — write "- None." if there is',
+  '  genuinely nothing. "Priorities for next week" = carry-forward tasks and stated next steps.',
+  '- Word choice: use "Deploy"/"Deployed" for release/completion. Never use "Land"/"Landed" — that is not',
+  '  Peter\'s vocabulary.',
+  '- 2–5 bullets per section; if a section truly has nothing to report, keep its heading and write "- None.".',
+  '- Do not use a "> " worked-today marker or checkbox syntax in the output — those are input artifacts.',
+].join('\n');
+
+// The 5 weekday dates (Mon–Fri) of the week containing `fridayDate`, with the
+// note content of whichever files exist. The Friday's own note is dropped from
+// the prompt if it doesn't exist yet (the usual case during a Thu→Fri roll).
+function weekNotesFor(fridayDate) {
+  const [y, m, d] = fridayDate.split('-').map(Number);
+  const fri = new Date(y, m - 1, d);
+  const out = [];
+  for (let i = 4; i >= 0; i--) {
+    const dt = new Date(fri);
+    dt.setDate(fri.getDate() - i);
+    const ds = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+    let content;
+    try { content = fs.readFileSync(path.join(DAILY_DIR, `${ds}.md`), 'utf8'); }
+    catch { continue; } // missing weekday — skip
+    out.push({ date: ds, label: WEEKDAY_LABELS[dt.getDay()], content });
+  }
+  return out;
+}
+
+// Drop a note's own "## Weekly Update" section so we don't feed the (usually
+// empty) template back into the draft.
+function stripWeeklyUpdate(md) {
+  const idx = md.indexOf('## Weekly Update');
+  return (idx === -1 ? md : md.slice(0, idx)).trimEnd();
+}
+
+function buildWeeklyUserMessage(fridayDate, notes) {
+  const parts = [`Here are my daily working notes for the week ending Friday ${fridayDate}:`, ''];
+  for (const n of notes) {
+    parts.push(`# ${n.date} (${n.label})`, stripWeeklyUpdate(n.content), '');
+  }
+  parts.push('Draft my Weekly Update to Karen from these notes.');
+  return parts.join('\n');
+}
+
+// Same roll-forward the web UI's "Roll Forward" button performs (carry open
+// tasks from the prior weekday's note into `date`), but server-side so the
+// CLI and HTTP API can trigger it without a browser. Creates/overwrites
+// daily/<date>.md.
+async function performRollForward(date) {
+  const { parser, mutations, rollForward } = await loadEsmUtils();
+  const prevDate = rollForward.subOneDay(date);
+  let prevContent = '';
+  try { prevContent = fs.readFileSync(path.join(DAILY_DIR, `${prevDate}.md`), 'utf8'); }
+  catch {}
+
+  const secs = parser.parseSections(prevContent).sections;
+  const { completed, worked, remaining } = parser.parseRawTasks(secs['Tasks'] || []);
+  const onDeckWorked = [];
+  const onDeckRemaining = [];
+  for (const line of (secs['On Deck'] || [])) {
+    const todo = /^\s*-\s*\[ \]\s*(.+)/.exec(line);
+    if (!todo) { onDeckRemaining.push(line); continue; }
+    const body = todo[1].trim();
+    if (body.startsWith('> ')) onDeckWorked.push(body.slice(2));
+    else onDeckRemaining.push(line);
+  }
+
+  let content = rollForward.buildNextDayContent(date, completed, worked, remaining, onDeckWorked, onDeckRemaining);
+
+  if (rollForward.isFriday(date)) {
+    let existingWu = null;
+    try {
+      const existingContent = fs.readFileSync(path.join(DAILY_DIR, `${date}.md`), 'utf8');
+      existingWu = parser.parseSections(existingContent).sections['Weekly Update'];
+    } catch {}
+    const alreadyFilled = existingWu && existingWu.some(l => /^\s*-\s+\S/.test(l));
+
+    if (alreadyFilled) {
+      content = mutations.rebuildWeeklyUpdateSection(content, existingWu.join('\n'));
+    } else {
+      const notes = weekNotesFor(date);
+      if (notes.length) {
+        try {
+          const msg = await anthropicReq({
+            model: ANTHROPIC_MODEL,
+            max_tokens: 6000,
+            thinking: { type: 'adaptive' },
+            output_config: { effort: 'medium' },
+            system: WEEKLY_UPDATE_SYSTEM,
+            messages: [{ role: 'user', content: buildWeeklyUserMessage(date, notes) }],
+          });
+          const body = extractText(msg);
+          if (body) content = mutations.rebuildWeeklyUpdateSection(content, body);
+        } catch (e) {
+          logger.warn({ err: e.message, date }, 'Roll-forward: weekly-update draft failed, keeping static template');
+        }
+      }
+    }
+  }
+
+  fs.mkdirSync(DAILY_DIR, { recursive: true });
+  fs.writeFileSync(path.join(DAILY_DIR, `${date}.md`), content, 'utf8');
+  return content;
+}
+
 // ── Route handler ──────────────────────────────────────────────────────────────
 async function handle(req, res) {
   // Security: only accept loopback connections
@@ -191,7 +397,7 @@ async function handle(req, res) {
     }
   }
 
-  // ── Serve static (Vue dist) or fallback to legacy daily.html ───────────────
+  // ── Serve static (Vue dist) ────────────────────────────────────────────────
   if (!pathname.startsWith('/api/')) {
     if (pathname === '/') {
       res.writeHead(302, {
@@ -220,14 +426,7 @@ async function handle(req, res) {
     if (ext && serveFile(distFile, mime[ext] || 'application/octet-stream')) return;
     // SPA fallback
     if (serveFile(distIndex, 'text/html; charset=utf-8')) return;
-    // Legacy fallback
-    try {
-      const html = fs.readFileSync(HTML_FILE, 'utf8');
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
-      return res.end(html);
-    } catch {
-      res.writeHead(404); return res.end('No index found. Run: npm run build');
-    }
+    res.writeHead(404); return res.end('No index found. Run: npm run build');
   }
 
   // ── GET /api/projects ─────────────────────────────────────────────────────────
@@ -250,6 +449,15 @@ async function handle(req, res) {
         .sort();
       return jsonResp(res, 200, files);
     } catch { return jsonResp(res, 200, []); }
+  }
+
+  // ── GET /api/time-entries/:date/draft ────────────────────────────────────────
+  const timeEntryDraftMatch = /^\/api\/time-entries\/(\d{4}-\d{2}-\d{2})\/draft$/.exec(pathname);
+  if (timeEntryDraftMatch && method === 'GET') {
+    const date = timeEntryDraftMatch[1];
+    const file = path.join(VAULT_PATH, '.tmp', 'time-entries', date, 'merged.json');
+    try { return jsonResp(res, 200, JSON.parse(fs.readFileSync(file, 'utf8'))); }
+    catch { return jsonResp(res, 404, { error: `No time-entry draft for ${date}` }); }
   }
 
   // ── GET/PUT /api/daily/:date ─────────────────────────────────────────────────
@@ -286,6 +494,84 @@ async function handle(req, res) {
     }
   }
 
+  // ── POST /api/daily/:date/roll-forward ───────────────────────────────────────
+  const rollForwardMatch = /^\/api\/daily\/(\d{4}-\d{2}-\d{2})\/roll-forward$/.exec(pathname);
+  if (rollForwardMatch && method === 'POST') {
+    const date = rollForwardMatch[1];
+    try {
+      const content = await performRollForward(date);
+      logger.info({ date }, 'Roll forward completed');
+      return jsonResp(res, 200, { ok: true, date, content });
+    } catch (e) {
+      logger.error({ err: e.message, date }, 'Roll forward failed');
+      return jsonResp(res, 500, { error: e.message });
+    }
+  }
+
+  // ── POST /api/daily/:date/task ───────────────────────────────────────────────
+  // Byte-correct edits to the ## Tasks section only — same primitives as
+  // mutations.js/the vault-tasks skill, exposed over HTTP for the CLI.
+  const taskActionMatch = /^\/api\/daily\/(\d{4}-\d{2}-\d{2})\/task$/.exec(pathname);
+  if (taskActionMatch && method === 'POST') {
+    const date = taskActionMatch[1];
+    const file = path.join(DAILY_DIR, `${date}.md`);
+    try {
+      const { parser, mutations } = await loadEsmUtils();
+      let raw;
+      try { raw = fs.readFileSync(file, 'utf8'); }
+      catch { return jsonResp(res, 404, { error: `No daily note at ${date} — roll-forward or save it first` }); }
+
+      const body = await readBody(req);
+      const action = body && body.action;
+
+      if (action === 'set') {
+        const key = body.key ? String(body.key).toUpperCase() : null;
+        const matchText = body.matchText ? String(body.matchText) : null;
+        if (!key && !matchText) return jsonResp(res, 400, { error: '"key" or "matchText" is required for action "set"' });
+        if (body.status && !parser.STATUS_SLUGS.has(body.status))
+          return jsonResp(res, 400, { error: `Unknown status "${body.status}"` });
+
+        const taskLines = parser.parseSections(raw).sections['Tasks'] || [];
+        const isTaskLine = l => /^\s*-\s*\[[x ]\]\s/i.test(l);
+        const matches = key
+          ? taskLines.filter(l => isTaskLine(l) && new RegExp(`\\b${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(l))
+          : taskLines.filter(l => isTaskLine(l) && l.toLowerCase().includes(matchText.toLowerCase()));
+
+        if (!matches.length) return jsonResp(res, 404, { error: `No task matching ${key || matchText} found in Tasks section — add it first` });
+        if (matches.length > 1) logger.warn({ date, key, matchText, count: matches.length }, 'Task-set matched multiple lines; acting on the first');
+
+        const oldLine = matches[0];
+        let newLine = oldLine;
+        if (body.status) newLine = mutations.rewriteTaskStatus(newLine, body.status);
+        if (typeof body.workedToday === 'boolean') newLine = mutations.setWorkedFlag(newLine, body.workedToday);
+        const newRaw = mutations.replaceLine(raw, oldLine, newLine);
+        fs.writeFileSync(file, newRaw, 'utf8');
+        return jsonResp(res, 200, { ok: true, date, line: newLine });
+      }
+
+      if (action === 'add') {
+        const text = body.text ? String(body.text).trim() : '';
+        if (!text) return jsonResp(res, 400, { error: '"text" is required for action "add"' });
+        if (!/^##\s+Tasks\s*$/m.test(raw)) return jsonResp(res, 400, { error: 'No "## Tasks" heading found in daily note' });
+
+        const addedLine = `- [ ] ${text}`;
+        let newRaw = mutations.addTaskToSection(raw, 'Tasks', text);
+        let finalLine = addedLine;
+        if (body.done === true) {
+          finalLine = mutations.rewriteTaskStatus(addedLine, 'done');
+          newRaw = mutations.replaceLine(newRaw, addedLine, finalLine);
+        }
+        fs.writeFileSync(file, newRaw, 'utf8');
+        return jsonResp(res, 200, { ok: true, date, line: finalLine });
+      }
+
+      return jsonResp(res, 400, { error: `Unknown action "${action}" — expected "set" or "add"` });
+    } catch (e) {
+      logger.error({ err: e.message, date }, 'Task action failed');
+      return jsonResp(res, 500, { error: e.message });
+    }
+  }
+
   // ── POST /api/jira/standup ───────────────────────────────────────────────────
   if (pathname === '/api/jira/config' && method === 'GET') {
     const jira = config.jira || {};
@@ -304,7 +590,19 @@ async function handle(req, res) {
   // ── POST /api/jira/standup ───────────────────────────────────────────────────
   if (pathname === '/api/jira/standup' && method === 'POST') {
     try {
-      const { date, yesterday, today, blockers } = await readBody(req);
+      const body = await readBody(req);
+      const { date } = body;
+      let { yesterday, today, blockers } = body;
+      if (yesterday === undefined && today === undefined && blockers === undefined) {
+        const { parser } = await loadEsmUtils();
+        let noteRaw = '';
+        try { noteRaw = fs.readFileSync(path.join(DAILY_DIR, `${date}.md`), 'utf8'); }
+        catch { return jsonResp(res, 404, { error: `No daily note at ${date}` }); }
+        const standup = parser.parseStandup(parser.parseSections(noteRaw).sections['Standup'] || []);
+        yesterday = standup.yesterday;
+        today = standup.today;
+        blockers = standup.blockers;
+      }
       const fields = (config.jira || {}).fields || {};
       logger.info({
         date,
@@ -369,10 +667,52 @@ async function handle(req, res) {
           { transition: { id: done.id } });
       }
 
+      try {
+        const { mutations } = await loadEsmUtils();
+        const file = path.join(DAILY_DIR, `${date}.md`);
+        const noteRaw = fs.readFileSync(file, 'utf8');
+        fs.writeFileSync(file, mutations.setFrontmatterField(noteRaw, 'standupSubmitted', 'true'), 'utf8');
+      } catch (e) {
+        logger.warn({ err: e.message, date }, 'Standup submit: could not stamp standupSubmitted into note frontmatter');
+      }
+
       logger.info({ date, key: issue.key, transitioned: !!done }, 'Standup submit completed');
       return jsonResp(res, 200, { ok: true, key: issue.key, transitioned: !!done });
     } catch (e) {
       logger.error({ err: e.message }, 'Standup submit failed');
+      return jsonResp(res, 500, { error: e.message });
+    }
+  }
+
+  // ── POST /api/weekly-update ───────────────────────────────────────────────────
+  if (pathname === '/api/weekly-update' && method === 'POST') {
+    try {
+      const { date } = await readBody(req);
+      if (!DATE_RE.test(String(date || ''))) return jsonResp(res, 400, { error: 'Invalid date format' });
+
+      const notes = weekNotesFor(date);
+      logger.info({ date, dayCount: notes.length }, 'Weekly update draft requested');
+      if (!notes.length) return jsonResp(res, 400, { error: `No daily notes found for the week ending ${date}` });
+
+      const msg = await anthropicReq({
+        model: ANTHROPIC_MODEL,
+        max_tokens: 6000,
+        thinking: { type: 'adaptive' },
+        output_config: { effort: 'medium' },
+        system: WEEKLY_UPDATE_SYSTEM,
+        messages: [{ role: 'user', content: buildWeeklyUserMessage(date, notes) }],
+      });
+
+      const body = extractText(msg);
+      if (!body) {
+        logger.warn({ date, stopReason: msg && msg.stop_reason }, 'Weekly update draft returned no text');
+        return jsonResp(res, 502, { error: 'Claude returned an empty draft' });
+      }
+
+      logger.info({ date, model: ANTHROPIC_MODEL, chars: body.length }, 'Weekly update draft completed');
+      return jsonResp(res, 200, { body });
+    } catch (e) {
+      logger.error({ err: e.message }, 'Weekly update draft failed');
       return jsonResp(res, 500, { error: e.message });
     }
   }

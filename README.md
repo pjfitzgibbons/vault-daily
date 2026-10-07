@@ -1,4 +1,4 @@
-# Vault Daily
+  # Vault Daily
 
 Vault Daily is a Docker-first daily notes app with:
 - A Vue 3 + Vite UI for task, standup, and notes workflows

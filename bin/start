@@ -53,9 +53,10 @@ fi
 
 echo "Local server is running on ${URL}"
 
-# Open VS Code's built-in Simple Browser in the current window.
-open "vscode://command/workbench.action.browser.open?%5B%22${URL}%22%5D" >/dev/null 2>&1 || true
+# Open in GBrowser via IDEA's built-in REST API (triggers GBrowserHomeAction).
+# One-time setup required: Settings → Tools → GBrowser → set Homepage to http://localhost:8008
+curl -sf "http://localhost:63342/api/action/GBrowserHomeAction" >/dev/null 2>&1 || true
 
-echo "If VS Code did not open Simple Browser automatically:"
-echo "1) Command Palette -> Simple Browser: Show"
-echo "2) Enter ${URL}"
+echo "If GBrowser did not open automatically:"
+echo "1) In IntelliJ IDEA: View → Tool Windows → GBrowser"
+echo "2) Navigate to ${URL}"

@@ -5,15 +5,29 @@ export const NOTES_PLACEHOLDER = '<!-- Cmd+; inserts the current time (HH:MM) at
 
 const SIMPLE_PREFIX_RE = /^([a-z][a-z0-9]*(?:-[a-z0-9]+)*)\s+/
 export const STATUS_SLUGS = new Set(['wip', 'in-review', 'reviewing', 'needs-qa', 'qa', 'done'])
+// Colours are CSS custom-property references so task-status badges follow the
+// active light/dark theme (tokens defined in App.vue). Applied via inline
+// `style="color: …"`, which the browser resolves against <html data-theme>.
 export const STATUS_LIST = [
-  { slug: 'wip',       label: 'WIP',       color: '#6b9bd2' },
-  { slug: 'in-review', label: 'In-Review', color: '#d4a017' },
-  { slug: 'reviewing', label: 'Reviewing', color: '#e5a550' },
-  { slug: 'needs-qa',  label: 'Needs-QA',  color: '#c586c0' },
-  { slug: 'qa',        label: 'QA',        color: '#c586c0' },
-  { slug: 'done',      label: 'Done',       color: '#4ec9b0' },
+  { slug: 'wip',       label: 'WIP',       color: 'var(--c-status-wip)' },
+  { slug: 'in-review', label: 'In-Review', color: 'var(--c-warn)' },
+  { slug: 'reviewing', label: 'Reviewing', color: 'var(--c-status-reviewing)' },
+  { slug: 'needs-qa',  label: 'Needs-QA',  color: 'var(--c-status-qa)' },
+  { slug: 'qa',        label: 'QA',        color: 'var(--c-status-qa)' },
+  { slug: 'done',      label: 'Done',       color: 'var(--c-done)' },
 ]
 export const STATUS_COLORS = Object.fromEntries(STATUS_LIST.map(s => [s.slug, s.color]))
+
+/**
+ * Read a single `key: value` line out of a frontmatter block string (as
+ * returned by parseSections — includes the `---` delimiters). Returns the
+ * trimmed string value, or null if the key isn't present.
+ */
+export function parseFrontmatterField(frontmatter, key) {
+  const re = new RegExp(`^${key}:\\s*(.*)$`, 'm')
+  const m = re.exec(frontmatter || '')
+  return m ? m[1].trim() : null
+}
 
 /**
  * Split rawContent into named sections.

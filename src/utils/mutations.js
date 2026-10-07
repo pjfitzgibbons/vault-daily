@@ -21,6 +21,21 @@ export function ensureWorkedFlagOnLine(lineText) {
 }
 
 /**
+ * Force the "worked today" (`> `) flag on an unchecked task line to the
+ * given boolean state. No-op on done ([x]) lines.
+ */
+export function setWorkedFlag(lineText, flag) {
+  const m = /^(\s*-\s*\[ \]\s*)(.+)$/.exec(lineText)
+  if (!m) return lineText
+  const lead = m[1]
+  let body = m[2]
+  const has = WORKED_FLAG_RE.test(body)
+  if (flag && !has) body = `> ${body}`
+  if (!flag && has) body = body.slice(2)
+  return `${lead}${body}`
+}
+
+/**
  * Rewrite a raw task line to the given status slug.
  * 'done' → - [x] <body>
  * 'wip'  → - [ ] <body>
@@ -45,6 +60,26 @@ export function rewriteTaskStatus(lineText, newSlug) {
 }
 
 /**
+ * Set (or add) a `key: value` line inside the leading frontmatter block
+ * (`---\n...\n---`). No-op if the file has no frontmatter block.
+ */
+export function setFrontmatterField(rawContent, key, value) {
+  const lines = rawContent.split(/\r?\n/)
+  if (lines[0] !== '---') return rawContent
+  const end = lines.indexOf('---', 1)
+  if (end < 0) return rawContent
+
+  const fieldRe = new RegExp(`^${key}:\\s*`)
+  const idx = lines.slice(1, end).findIndex(l => fieldRe.test(l))
+  if (idx >= 0) {
+    lines[1 + idx] = `${key}: ${value}`
+  } else {
+    lines.splice(end, 0, `${key}: ${value}`)
+  }
+  return lines.join('\n')
+}
+
+/**
  * Replace one exact raw line in rawContent.
  */
 export function replaceLine(rawContent, oldLine, newLine) {
@@ -58,16 +93,14 @@ export function replaceLine(rawContent, oldLine, newLine) {
  * Edit the body text of a task line, preserving checkbox + status prefix.
  * Auto-sets the worked-today flag on unchecked tasks (editing = you worked on it).
  */
-export function editTaskBody(rawContent, oldRaw, newBody) {
+export function editTaskBody(rawContent, oldRaw, newBody, { autoWorked = true } = {}) {
   const indent = /^(\s*)/.exec(oldRaw)[1]
   const m = /^\s*-\s*\[([x ])\]\s*(.+)$/i.exec(oldRaw)
   if (!m) return rawContent
   const cbChar = m[1], rest = m[2]
-  const pm = SIMPLE_PREFIX_RE.exec(rest)
-  const prefix = (pm && STATUS_SLUGS.has(pm[1])) ? pm[1] + ' ' : ''
-  // Preserve worked flag; auto-set for unchecked tasks (editing = you worked on it)
   const alreadyFlagged = /^> /.test(rest)
-  const flag = cbChar === ' ' ? '> ' : ''
+  // Editing a Tasks item marks it worked; editing an On Deck item must not, or it would move at once
+  const flag = cbChar === ' ' && (autoWorked || alreadyFlagged) ? '> ' : ''
   // Strip existing '> ' if present before prefix
   const bodyAfterFlag = alreadyFlagged ? rest.slice(2) : rest
   const bodyPm = SIMPLE_PREFIX_RE.exec(bodyAfterFlag)
@@ -90,28 +123,47 @@ export function toggleWorkedToday(rawContent, rawLine) {
   return replaceLine(rawContent, rawLine, `${indent}- [ ] ${newBody}`)
 }
 
+export const TASK_DRAG_MIME = 'application/x-vault-task'
+
+// [start, end) line indices of a section body; start is the heading line.
+function sectionBounds(lines, name) {
+  const start = lines.findIndex(l => {
+    const h2 = /^##\s+(.+)/.exec(l)
+    return h2 && h2[1].trim() === name
+  })
+  if (start < 0) return null
+  let end = start + 1
+  while (end < lines.length && !/^##\s+/.test(lines[end])) end++
+  return { start, end }
+}
+
+// Inserts after the section's last non-blank line, or before the next heading if it has none.
+function insertIntoSection(lines, sectionName, newLine) {
+  const b = sectionBounds(lines, sectionName)
+  if (!b) return false
+  let insertAt = b.end
+  for (let i = b.end - 1; i > b.start; i--) {
+    if (lines[i].trim()) { insertAt = i + 1; break }
+  }
+  lines.splice(insertAt, 0, newLine)
+  return true
+}
+
+function removeFromSection(lines, sectionName, rawLine) {
+  const b = sectionBounds(lines, sectionName)
+  if (!b) return false
+  const idx = lines.indexOf(rawLine, b.start + 1)
+  if (idx < 0 || idx >= b.end) return false
+  lines.splice(idx, 1)
+  return true
+}
+
 /**
  * Add a new task line to the end of the named section (before next ## or EOF).
  */
 export function addTaskToSection(rawContent, sectionName, text) {
-  const newLine = `- [ ] ${text}`
   const lines = rawContent.split(/\r?\n/)
-  let inSection = false
-  let insertAt = -1
-
-  for (let i = 0; i < lines.length; i++) {
-    const h2 = /^##\s+(.+)/.exec(lines[i])
-    if (h2) {
-      if (inSection) { insertAt = i; break }
-      inSection = h2[1].trim() === sectionName
-      continue
-    }
-    if (inSection && lines[i].trim()) insertAt = i + 1
-  }
-  if (inSection && insertAt === -1) insertAt = lines.length
-  if (insertAt === -1) return rawContent
-
-  lines.splice(insertAt, 0, newLine)
+  if (!insertIntoSection(lines, sectionName, `- [ ] ${text}`)) return rawContent
   return lines.join('\n')
 }
 
@@ -122,6 +174,61 @@ export function deleteTaskFromSection(rawContent, rawLine) {
   const lines = rawContent.split(/\r?\n/)
   const idx = lines.indexOf(rawLine)
   if (idx !== -1) lines.splice(idx, 1)
+  return lines.join('\n')
+}
+
+/**
+ * Reduce a task line to a plain unchecked, unflagged, status-less `- [ ] body`.
+ * Used when a task is dropped onto On Deck, where a settled state would bounce it back.
+ */
+export function plainTaskLine(lineText) {
+  const m = /^\s*-\s*\[[x ]\]\s*(.+)$/i.exec(lineText)
+  if (!m) return lineText
+  let body = m[1]
+  if (WORKED_FLAG_RE.test(body)) body = body.slice(2)
+  const pm = SIMPLE_PREFIX_RE.exec(body)
+  if (pm && STATUS_SLUGS.has(pm[1])) body = body.slice(pm[0].length)
+  return `- [ ] ${body}`
+}
+
+/**
+ * An On Deck line is "settled" when it is checked, worked-today flagged, or has a non-WIP status.
+ */
+export function isSettledTask(lineText) {
+  const m = /^\s*-\s*\[([x ])\]\s*(.+)$/i.exec(lineText)
+  if (!m) return false
+  if (m[1].toLowerCase() === 'x') return true
+  const body = m[2]
+  if (WORKED_FLAG_RE.test(body)) return true
+  const pm = SIMPLE_PREFIX_RE.exec(body)
+  return !!pm && STATUS_SLUGS.has(pm[1]) && pm[1] !== 'wip'
+}
+
+/**
+ * Move one exact task line from one section to the end of another.
+ * Lines landing on On Deck are normalised via plainTaskLine.
+ */
+export function moveTaskBetweenSections(rawContent, fromSection, toSection, rawLine) {
+  const lines = rawContent.split(/\r?\n/)
+  if (!removeFromSection(lines, fromSection, rawLine)) return rawContent
+  const moved = toSection === 'On Deck' ? plainTaskLine(rawLine) : rawLine
+  if (!insertIntoSection(lines, toSection, moved)) return rawContent
+  return lines.join('\n')
+}
+
+/**
+ * Move every settled On Deck line to the end of Tasks.
+ */
+export function promoteSettledOnDeck(rawContent) {
+  const lines = rawContent.split(/\r?\n/)
+  if (!sectionBounds(lines, 'On Deck') || !sectionBounds(lines, 'Tasks')) return rawContent
+  const b = sectionBounds(lines, 'On Deck')
+  const settled = lines.slice(b.start + 1, b.end).filter(isSettledTask)
+  if (!settled.length) return rawContent
+  for (const line of settled) {
+    removeFromSection(lines, 'On Deck', line)
+    insertIntoSection(lines, 'Tasks', line)
+  }
   return lines.join('\n')
 }
 
@@ -196,6 +303,51 @@ export function rebuildNotesSection(rawContent, notesText) {
   if (skip) out.push(...notesText.split('\n'))
 
   return out.join('\n')
+}
+
+/**
+ * Rebuild the Weekly Update section in-place.
+ * Mirrors rebuildNotesSection: replaces everything under `## Weekly Update`
+ * up to the next `## ` heading (or EOF). No-op if the section is absent.
+ */
+export function rebuildWeeklyUpdateSection(rawContent, weeklyText) {
+  const lines = rawContent.split(/\r?\n/)
+  const out = []
+  let skip = false
+
+  for (let i = 0; i < lines.length; i++) {
+    const h2 = /^##\s+(.+)/.exec(lines[i])
+    if (h2) {
+      if (skip) {
+        out.push(...weeklyText.split('\n'))
+        skip = false
+      }
+      if (h2[1].trim() === 'Weekly Update') {
+        out.push(lines[i])
+        skip = true
+        continue
+      }
+    }
+    if (skip) continue
+    out.push(lines[i])
+  }
+  if (skip) out.push(...weeklyText.split('\n'))
+
+  return out.join('\n')
+}
+
+/**
+ * Replace the body of a named `## ` section, appending the section if absent.
+ */
+export function setSectionBody(rawContent, name, bodyLines) {
+  const lines = rawContent.split(/\r?\n/)
+  const b = sectionBounds(lines, name)
+  if (!b) {
+    const sep = lines[lines.length - 1] === '' ? [] : ['']
+    return [...lines, ...sep, `## ${name}`, ...bodyLines, ''].join('\n')
+  }
+  lines.splice(b.start + 1, b.end - b.start - 1, ...bodyLines, '')
+  return lines.join('\n')
 }
 
 /**

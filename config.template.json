@@ -10,5 +10,9 @@
       "today": "customfield_11886",
       "blockers": "customfield_11887"
     }
+  },
+  "anthropic": {
+    "apiKey": "sk-ant-...",
+    "model": "claude-opus-4-8"
   }
 }

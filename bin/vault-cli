@@ -1,0 +1,154 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PORT="${VAULT_PORT:-8008}"
+URL="http://localhost:${PORT}"
+
+cd "$ROOT_DIR"
+
+usage() {
+  cat <<EOF
+Usage: bin/vault-cli <subcommand> [options]
+
+Subcommands:
+  roll-forward --date YYYY-MM-DD
+      Create/overwrite daily/<date>.md by rolling forward open tasks from
+      the prior weekday's note (same logic as the web UI's Roll Forward button).
+
+  task-set --date YYYY-MM-DD (--ticket KEY | --match TEXT)
+           [--status wip|in-review|reviewing|needs-qa|qa|done]
+           [--worked-today | --no-worked-today]
+      Update an existing task line in ## Tasks, found either by Jira key
+      (--ticket, whole-token match) or by a literal text fragment (--match,
+      case-insensitive substring match).
+
+  task-add --date YYYY-MM-DD --body TEXT [--done]
+      Append a new task line to ## Tasks. With --done it is added already
+      checked off.
+
+  submit-standup --date YYYY-MM-DD
+      Submit that date's Standup section (Yesterday/Today/Blockers, read
+      straight from the daily note) to its Jira standup card and transition
+      it to Done, same as the web UI's Submit button.
+
+Environment:
+  VAULT_PORT   override the local server port (default 8008)
+EOF
+}
+
+is_up() { curl -fsS "$URL" >/dev/null 2>&1; }
+
+ensure_server() {
+  if is_up; then return; fi
+  echo "Starting vault server on ${URL} ..." >&2
+  npm run localserver >/tmp/vault-localserver.log 2>&1 &
+  for _ in {1..30}; do
+    if is_up; then return; fi
+    sleep 1
+  done
+  echo "Local server did not come up on ${URL}. See /tmp/vault-localserver.log" >&2
+  exit 1
+}
+
+require_date() {
+  if [[ -z "${DATE:-}" ]]; then
+    echo "error: --date YYYY-MM-DD is required" >&2
+    exit 1
+  fi
+}
+
+post_json() {
+  local path="$1" payload="$2"
+  curl -fsS -X POST "${URL}${path}" -H 'Content-Type: application/json' -d "$payload"
+  echo
+}
+
+cmd_roll_forward() {
+  require_date
+  ensure_server
+  post_json "/api/daily/${DATE}/roll-forward" '{}'
+}
+
+cmd_task_set() {
+  require_date
+  if [[ -z "${TICKET:-}" && -z "${MATCH:-}" ]]; then
+    echo "error: --ticket KEY or --match TEXT is required" >&2
+    exit 1
+  fi
+  ensure_server
+  local payload
+  payload=$(node -e '
+    const [ticket, matchText, status, worked] = process.argv.slice(1)
+    const body = { action: "set" }
+    if (ticket) body.key = ticket
+    if (matchText) body.matchText = matchText
+    if (status) body.status = status
+    if (worked === "true") body.workedToday = true
+    if (worked === "false") body.workedToday = false
+    process.stdout.write(JSON.stringify(body))
+  ' "${TICKET:-}" "${MATCH:-}" "${STATUS:-}" "${WORKED:-}")
+  post_json "/api/daily/${DATE}/task" "$payload"
+}
+
+cmd_submit_standup() {
+  require_date
+  ensure_server
+  post_json "/api/jira/standup" "$(node -e '
+    process.stdout.write(JSON.stringify({ date: process.argv[1] }))
+  ' "${DATE}")"
+}
+
+cmd_task_add() {
+  require_date
+  if [[ -z "${BODY:-}" ]]; then
+    echo "error: --body TEXT is required" >&2
+    exit 1
+  fi
+  ensure_server
+  local payload
+  payload=$(node -e '
+    const [text, done] = process.argv.slice(1)
+    process.stdout.write(JSON.stringify({ action: "add", text, done: done === "true" }))
+  ' "$BODY" "${DONE:-false}")
+  post_json "/api/daily/${DATE}/task" "$payload"
+}
+
+if [[ $# -lt 1 ]]; then
+  usage
+  exit 1
+fi
+
+SUBCOMMAND="$1"; shift
+
+DATE=""
+TICKET=""
+MATCH=""
+STATUS=""
+WORKED=""
+BODY=""
+DONE="false"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --date) DATE="$2"; shift 2 ;;
+    --ticket) TICKET="$2"; shift 2 ;;
+    --match) MATCH="$2"; shift 2 ;;
+    --status) STATUS="$2"; shift 2 ;;
+    --worked-today) WORKED="true"; shift ;;
+    --no-worked-today) WORKED="false"; shift ;;
+    --body) BODY="$2"; shift 2 ;;
+    --done) DONE="true"; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "Unknown option: $1" >&2; usage; exit 1 ;;
+  esac
+done
+
+case "$SUBCOMMAND" in
+  roll-forward) cmd_roll_forward ;;
+  task-set) cmd_task_set ;;
+  task-add) cmd_task_add ;;
+  submit-standup) cmd_submit_standup ;;
+  -h|--help) usage ;;
+  *) echo "Unknown subcommand: $SUBCOMMAND" >&2; usage; exit 1 ;;
+esac

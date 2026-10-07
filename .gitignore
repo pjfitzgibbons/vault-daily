@@ -9,3 +9,4 @@ config.json
 .cocoindex_code/cocoindex.db/mdb/data.mdb
 .cocoindex_code/cocoindex.db/mdb/lock.mdb
 .cocoindex_code/target_sqlite.db
+.tmp/

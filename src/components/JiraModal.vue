@@ -42,38 +42,38 @@ function emitSubmit() {
 .backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,.55);
+  background: var(--c-backdrop);
   z-index: 200;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 .modal {
-  background: #252526;
-  border: 1px solid #3e3e42;
+  background: var(--c-bg-panel);
+  border: 1px solid var(--c-border);
   border-radius: 6px;
   padding: 20px;
   width: 420px;
   max-width: 92vw;
 }
-h3 { font-size: 15px; margin: 0 0 12px; color: #cccccc; }
-.info { font-size: 12px; color: #808080; line-height: 1.5; margin: 0; }
-code { background: #2d2d30; padding: 1px 4px; border-radius: 2px; }
+h3 { font-size: 15px; margin: 0 0 12px; color: var(--c-text); }
+.info { font-size: 12px; color: var(--c-text-dim); line-height: 1.5; margin: 0; }
+code { background: var(--c-bg-input); padding: 1px 4px; border-radius: 2px; }
 .status-msg { margin-top: 10px; font-size: 12px; }
-.status-msg.ok  { color: #4ec9b0; }
-.status-msg.err { color: #f66; }
+.status-msg.ok  { color: var(--c-done); }
+.status-msg.err { color: var(--c-danger); }
 .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 button {
-  background: #2d2d30;
-  border: 1px solid #3e3e42;
-  color: #cccccc;
+  background: var(--c-bg-input);
+  border: 1px solid var(--c-border);
+  color: var(--c-text);
   padding: 4px 12px;
   border-radius: 3px;
   cursor: pointer;
   font-size: 13px;
 }
-button:hover:not(:disabled) { background: #3e3e42; }
+button:hover:not(:disabled) { background: var(--c-border); }
 button:disabled { opacity: .4; cursor: default; }
-.primary { background: #007acc; border-color: #007acc; color: #fff; }
-.primary:hover:not(:disabled) { background: #1a8ad4; }
+.primary { background: var(--c-accent); border-color: var(--c-accent); color: #fff; }
+.primary:hover:not(:disabled) { background: var(--c-accent-hover); }
 </style>

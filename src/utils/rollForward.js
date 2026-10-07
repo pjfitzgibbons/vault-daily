@@ -8,6 +8,37 @@ const WIKILINK_RE = /\[\[([^\]]+)\]\]/g
 const STATUS_SLUGS = new Set(['wip', 'in-review', 'reviewing', 'needs-qa', 'qa', 'done'])
 const SIMPLE_PREFIX_RE = /^([a-z][a-z0-9]*(?:-[a-z0-9]+)*)\s+/
 
+// The manager-facing weekly snapshot, appended to every Friday note.
+// Same four prompts each week; fill the bullets in as the week wraps up.
+export const WEEKLY_UPDATE_SECTION = [
+  '## Weekly Update',
+  '',
+  'Hi Karen,',
+  '',
+  'Quick end-of-week snapshot.',
+  '',
+  '### Wins this week',
+  '- ',
+  '',
+  '### Unblocked or moved forward',
+  '- ',
+  '',
+  '### Risks or blockers on my radar',
+  '- ',
+  '',
+  '### Priorities for next week',
+  '- ',
+  '',
+  'Kindest Regards,',
+  'Peter Fitzgibbons',
+]
+
+/** True when a YYYY-MM-DD string falls on a Friday. */
+export function isFriday(dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  return new Date(y, m - 1, d).getDay() === 5
+}
+
 /**
  * Transform a raw task body for use as a standup bullet.
  * - Strips ticket refs (collected into suffix)
@@ -74,6 +105,7 @@ export function buildNextDayContent(nextDate, completed, worked, remaining, onDe
     '## Notes',
     NOTES_PLACEHOLDER,
     '',
+    ...(isFriday(nextDate) ? [...WEEKLY_UPDATE_SECTION, ''] : []),
   ].join('\n')
 }
 

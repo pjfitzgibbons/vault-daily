@@ -4,6 +4,22 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Vault Daily</title>
+    <script>
+      // Set the theme before first paint to avoid a flash of the wrong colours.
+      // Mirrors useTheme.js: 'auto' follows the browser/VSCode colour scheme.
+      (function () {
+        try {
+          var m = localStorage.getItem('vault-theme-mode');
+          if (m !== 'light' && m !== 'dark') {
+            m = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)
+              ? 'dark' : 'light';
+          }
+          document.documentElement.setAttribute('data-theme', m);
+        } catch (e) {
+          document.documentElement.setAttribute('data-theme', 'dark');
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="app"></div>
