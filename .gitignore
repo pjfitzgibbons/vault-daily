@@ -10,3 +10,5 @@ config.json
 .cocoindex_code/cocoindex.db/mdb/lock.mdb
 .cocoindex_code/target_sqlite.db
 .tmp/
+.idea/
+src/varar/

@@ -1,0 +1,4 @@
+{
+  "docs": { "include": ["varar/**/*.md"], "exclude": [] },
+  "steps": ["src/varar/**/*.steps.ts"]
+}

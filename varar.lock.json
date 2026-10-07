@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "specs": {
+    "varar-examples/deep-thought.md": {
+      "sourceHash": "fnv1a:a158f8b7",
+      "examples": [
+        {
+          "name": "The answer to the great question of life, the universe and everything is 42",
+          "line": 5
+        }
+      ]
+    },
+    "varar/daily-notes.md": {
+      "sourceHash": "fnv1a:81efedf7",
+      "examples": [
+        {
+          "name": "Rewriting an open task to the **in-review** status leaves the box open, which is \"true\". Rewriting an open task to the **in-review** status inserts the in-review slug, which is \"true\". Rewriting any task to **done** collapses it to a checked box with no worked flag, which is \"true\"",
+          "line": 23
+        },
+        {
+          "name": "Marking an unflagged open task as worked-today inserts the `> ` flag, so afterwards the flag is \"present\"",
+          "line": 29
+        },
+        {
+          "name": "When a note rolls forward to the next day, the date advances by one **weekday**, skipping weekends. Rolling forward from Friday 2026-08-28 lands on \"2026-08-31\". Rolling forward from Monday 2026-08-31 lands on \"2026-09-01\". The date 2026-08-28 is a Friday, which is \"true\"",
+          "line": 33
+        },
+        {
+          "name": "Adding a task to the Tasks section appends a new open checkbox line, so afterwards the new line is \"present\"",
+          "line": 40
+        }
+      ]
+    }
+  }
+}
